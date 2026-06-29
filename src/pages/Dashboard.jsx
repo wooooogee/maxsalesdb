@@ -23,7 +23,8 @@ import {
   MessageSquare,
   Award,
   MapPin,
-  Building
+  Building,
+  Copy
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './Dashboard.css';
@@ -670,22 +671,29 @@ const Dashboard = () => {
                   {client && (
                     <div className="schedule-actions">
                       {client.phone && (
-                        <a href={`tel:${client.phone}`} className="btn-secondary btn-schedule-action" style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}>
+                        <a href={`tel:${client.phone}`} className="btn-secondary btn-schedule-action">
                           <Phone size={12} /> 전화
                         </a>
                       )}
                       {client.phone && (
-                        <a href={`sms:${client.phone}`} className="btn-secondary btn-schedule-action" style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}>
+                        <a href={`sms:${client.phone}`} className="btn-secondary btn-schedule-action">
                           <MessageSquare size={12} /> 문자
                         </a>
                       )}
                       {client.address && (
-                        <a href={`https://map.naver.com/v5/search/${encodeURIComponent(client.address)}`} target="_blank" rel="noopener noreferrer" className="btn-secondary btn-schedule-action" style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', backgroundColor: '#03c75a', color: 'white', border: 'none' }}>
-                          <MapPin size={12} /> 주소
-                        </a>
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(client.address).then(() => toast.success('주소가 복사되었습니다.'));
+                          }}
+                          className="btn-secondary btn-schedule-action" 
+                          style={{ backgroundColor: '#03c75a', color: 'white', border: 'none' }}
+                        >
+                          <Copy size={12} /> 주소복사
+                        </button>
                       )}
                       {(client.company || meet.client_name) && (
-                        <a href={`https://map.naver.com/v5/search/${encodeURIComponent(client.company || meet.client_name)}`} target="_blank" rel="noopener noreferrer" className="btn-secondary btn-schedule-action" style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', backgroundColor: '#2d60ff', color: 'white', border: 'none' }}>
+                        <a href={`https://map.naver.com/v5/search/${encodeURIComponent(client.company || meet.client_name)}`} target="_blank" rel="noopener noreferrer" className="btn-secondary btn-schedule-action" style={{ backgroundColor: '#2d60ff', color: 'white', border: 'none' }}>
                           <Building size={12} /> 상호
                         </a>
                       )}

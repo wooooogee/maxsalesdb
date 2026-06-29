@@ -12,10 +12,10 @@ import {
   FileText, 
   ChevronRight, 
   MapPin, 
-  Navigation,
   MessageSquare,
   Calendar,
-  Trash2
+  Trash2,
+  Copy
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useUser } from '../UserContext';
@@ -139,15 +139,15 @@ const Contacts = () => {
     }
   };
 
-  const handleSearchAddress = async (silentError = false) => {
-    if (!addressSearch.trim()) {
+  const handleSearchAddress = async (silentError = false, query = addressSearch) => {
+    if (!query.trim()) {
       if (!silentError) toast.error('검색할 주소를 입력하세요.');
       return;
     }
 
     try {
       if (!silentError) toast.loading('주소 좌표를 검색 중...', { id: 'geo-search' });
-      const result = await geocodeAddress(addressSearch);
+      const result = await geocodeAddress(query);
       
       setFormData(prev => ({
         ...prev,
@@ -175,7 +175,7 @@ const Contacts = () => {
       // Fallback: manually fill mock coords or allow manual typing
       setFormData(prev => ({
         ...prev,
-        address: addressSearch,
+        address: query,
         city: '서울특별시', // Fallback defaults
         district: '서초구',
         latitude: '37.4979',
@@ -485,16 +485,18 @@ const Contacts = () => {
                           </a>
                         )}
                         {contact.address && (
-                          <a 
-                            href={`https://map.naver.com/v5/search/${encodeURIComponent(contact.address)}`} 
-                            target="_blank" 
-                            rel="noopener noreferrer" 
+                          <button 
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(contact.address).then(() => toast.success('주소가 복사되었습니다.'));
+                            }}
                             className="btn-secondary btn-sm" 
-                            title="네이버지도 주소로 검색"
+                            title="주소 텍스트 복사"
                             style={{ padding: '0.35rem 0.5rem', display: 'flex', alignItems: 'center', backgroundColor: '#03C75A', color: 'white', border: 'none', borderRadius: '4px' }}
                           >
-                            <Navigation size={13} /> <span style={{ fontSize: '0.7rem', fontWeight: 600, marginLeft: '0.2rem' }}>주소지도</span>
-                          </a>
+                            <Copy size={13} /> <span style={{ fontSize: '0.7rem', fontWeight: 600, marginLeft: '0.2rem' }}>주소복사</span>
+                          </button>
                         )}
                         {contact.company && (
                           <a 
@@ -582,39 +584,54 @@ const Contacts = () => {
                 <input type="text" name="fax" value={formData.fax} onChange={handleInputChange} placeholder="예: 02-123-4567" />
               </div>
 
-              {/* Address Search & Map preview */}
-              <div className="address-search-group">
-                <label>지도 검색 (주소 또는 상호명)</label>
+              {/* Address Section */}
+              <div className="address-search-group" style={{ gridColumn: 'span 2' }}>
+                <label>등록할 주소 (도로명 또는 지번)</label>
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                  <input 
+                    type="text" 
+                    name="address"
+                    value={formData.address}
+                    onChange={handleInputChange}
+                    placeholder="주소를 직접 입력하거나 아래에서 지도검색 하세요" 
+                    style={{ flex: 1 }}
+                  />
+                  <button 
+                    type="button" 
+                    className="btn-primary" 
+                    style={{ padding: '0 1rem', whiteSpace: 'nowrap' }} 
+                    onClick={() => {
+                      if (!formData.address.trim()) return toast.error('주소를 입력하세요.');
+                      handleSearchAddress(false, formData.address);
+                    }}
+                  >
+                    좌표 확인
+                  </button>
+                </div>
+
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>주소를 모른다면 상호명으로 지도 검색 후 주소를 복사해오세요</label>
                 <div className="address-input-wrapper">
                   <input 
                     type="text" 
-                    placeholder="도로명, 지번 주소 또는 상호명 입력..." 
+                    placeholder="상호명 입력 후 지도검색..." 
                     value={addressSearch}
                     onChange={(e) => setAddressSearch(e.target.value)}
                   />
                   <button 
                     type="button" 
-                    className="btn-primary" 
-                    style={{ padding: '0 1rem', whiteSpace: 'nowrap', backgroundColor: '#2d60ff', border: 'none' }} 
+                    className="btn-secondary" 
+                    style={{ padding: '0 1rem', whiteSpace: 'nowrap', backgroundColor: '#2d60ff', color: 'white', border: 'none' }} 
                     onClick={() => {
                       if (!addressSearch.trim()) {
-                        toast.error('검색할 상호명이나 주소를 입력하세요.');
+                        toast.error('상호명을 입력하세요.');
                         return;
                       }
-                      // 네이버 지도 앱/웹으로 이동
                       window.open(`https://map.naver.com/v5/search/${encodeURIComponent(addressSearch)}`, '_blank');
-                      // 내부 미니맵 마커 표시를 위한 지오코딩 시도 (주소일 경우만 성공)
-                      handleSearchAddress(true);
                     }}
                   >
                     지도 검색
                   </button>
                 </div>
-                {formData.address && (
-                  <div style={{ fontSize: '0.8rem', color: 'var(--success-color)', fontWeight: 500 }}>
-                    확인된 주소: {formData.address} ({formData.city} {formData.district})
-                  </div>
-                )}
                 
                 {/* Mini Map Preview */}
                 <div className="map-preview-box" ref={miniMapRef}>
