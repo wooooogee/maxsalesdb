@@ -172,10 +172,10 @@ const Contacts = () => {
     }
   };
 
-  const handleStartEdit = (contact) => {
+  const handleStartEdit = React.useCallback((contact) => {
     setFormData(contact);
     setIsModalOpen(true);
-  };
+  }, []);
 
   const requestDeleteContact = (id) => {
     setDeleteTargetId(id);
@@ -209,17 +209,189 @@ const Contacts = () => {
   };
 
   // Filter & Search Logic
-  const filteredContacts = contacts.filter(contact => {
-    const matchesSearch = 
-      contact.name?.includes(searchQuery) || 
-      contact.company?.includes(searchQuery) || 
-      contact.address?.includes(searchQuery);
-    
-    const matchesCity = selectedCity ? contact.city === selectedCity : true;
-    const matchesDistrict = selectedDistrict ? contact.district === selectedDistrict : true;
-    
-    return matchesSearch && matchesCity && matchesDistrict;
-  });
+  const filteredContacts = React.useMemo(() => {
+    return contacts.filter(contact => {
+      const matchesSearch = 
+        contact.name?.includes(searchQuery) || 
+        contact.company?.includes(searchQuery) || 
+        contact.address?.includes(searchQuery);
+      
+      const matchesCity = selectedCity ? contact.city === selectedCity : true;
+      const matchesDistrict = selectedDistrict ? contact.district === selectedDistrict : true;
+      
+      return matchesSearch && matchesCity && matchesDistrict;
+    });
+  }, [contacts, searchQuery, selectedCity, selectedDistrict]);
+
+  const renderedContacts = React.useMemo(() => {
+    return filteredContacts.map(contact => {
+      const isExpanded = expandedContactId === contact.id;
+      return (
+        <div 
+          key={contact.id} 
+          className={`contact-card ${isExpanded ? 'expanded' : 'collapsed'}`}
+          style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column' }}
+          onClick={() => setExpandedContactId(isExpanded ? null : contact.id)}
+        >
+          {/* 카드 헤더 (항상 노출) */}
+          <div 
+            className="contact-card-header" 
+            style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              borderBottom: isExpanded ? '1px solid var(--border-color)' : 'none',
+              padding: '0.85rem 1rem'
+            }}
+          >
+            <div className="contact-company" style={{ fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+              <Building size={15} style={{ color: 'var(--accent-color)', flexShrink: 0 }}/> 
+              <span style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+                {contact.company}
+                {contact.name && (
+                  <>
+                    <span style={{ margin: '0 0.3rem', color: 'var(--text-secondary)' }}>-</span>
+                    <span style={{ fontWeight: 400, color: 'var(--text-secondary)' }}>{contact.name}</span>
+                  </>
+                )}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ 
+                  padding: '0.15rem 0.45rem', 
+                  fontSize: '0.7rem', 
+                  borderRadius: '4px', 
+                  border: '1px solid var(--border-color)', 
+                  marginRight: '0.2rem',
+                  cursor: 'pointer',
+                  backgroundColor: 'var(--bg-secondary)',
+                  color: 'var(--text-primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  fontWeight: 500
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleStartEdit(contact);
+                }}
+              >
+                수정
+              </button>
+              <ChevronRight 
+                size={16} 
+                style={{ 
+                  transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', 
+                  transition: 'transform 0.2s',
+                  color: 'var(--text-secondary)'
+                }} 
+              />
+            </div>
+          </div>
+          
+          {/* 확장 상세 구역 */}
+          {isExpanded && (
+            <>
+              {/* 카드 본문 */}
+              <div className="contact-body" onClick={(e) => e.stopPropagation()} style={{ padding: '1rem', backgroundColor: 'var(--bg-secondary)' }}>
+                <div className="contact-name" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                  <User size={22} className="contact-avatar"/>
+                  <div>
+                    <h3 style={{ fontSize: '0.95rem', fontWeight: 600, margin: 0 }}>
+                      {contact.name} <span style={{ fontSize: '0.8rem', fontWeight: 400, color: 'var(--text-secondary)', marginLeft: '0.3rem' }}>{contact.title || '담당자'}</span>
+                    </h3>
+                  </div>
+                </div>
+                <div className="contact-details" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.85rem' }}>
+                  {contact.phone && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <Phone size={13} style={{ color: 'var(--text-secondary)' }}/> {contact.phone}
+                    </div>
+                  )}
+                  {contact.email && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <Mail size={13} style={{ color: 'var(--text-secondary)' }}/> {contact.email}
+                    </div>
+                  )}
+                  {contact.fax && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <FileText size={13} style={{ color: 'var(--text-secondary)' }}/> 팩스: {contact.fax}
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              {/* 카드 푸터 (행동 버튼 및 주소지 한 줄 출력) */}
+              <div className="contact-footer" onClick={(e) => e.stopPropagation()} style={{ padding: '0.75rem 1rem', borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', borderBottomLeftRadius: 'var(--radius-lg)', borderBottomRightRadius: 'var(--radius-lg)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {contact.phone && (
+                    <a href={`tel:${contact.phone}`} className="btn-secondary btn-sm" title="전화걸기" style={{ padding: '0.35rem 0.5rem', display: 'flex', alignItems: 'center', borderRadius: '4px' }}>
+                      <Phone size={13} />
+                    </a>
+                  )}
+                  {contact.phone && (
+                    <a href={`sms:${contact.phone}`} className="btn-secondary btn-sm" title="문자보내기" style={{ padding: '0.35rem 0.5rem', display: 'flex', alignItems: 'center', borderRadius: '4px' }}>
+                      <MessageSquare size={13} />
+                    </a>
+                  )}
+                  {contact.address && (
+                    <button 
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(contact.address).then(() => toast.success('주소가 복사되었습니다.'));
+                      }}
+                      className="btn-secondary btn-sm" 
+                      title="주소 텍스트 복사"
+                      style={{ padding: '0.35rem 0.5rem', display: 'flex', alignItems: 'center', backgroundColor: '#03C75A', color: 'white', border: 'none', borderRadius: '4px' }}
+                    >
+                      <Copy size={13} /> <span style={{ fontSize: '0.7rem', fontWeight: 600, marginLeft: '0.2rem' }}>주소복사</span>
+                    </button>
+                  )}
+                  {contact.company && (
+                    <a 
+                      href={`https://map.naver.com/v5/search/${encodeURIComponent(contact.company)}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="btn-secondary btn-sm" 
+                      title="네이버지도 상호명으로 검색"
+                      style={{ padding: '0.35rem 0.5rem', display: 'flex', alignItems: 'center', backgroundColor: '#2d60ff', color: 'white', border: 'none', borderRadius: '4px' }}
+                    >
+                      <Building size={13} /> <span style={{ fontSize: '0.7rem', fontWeight: 600, marginLeft: '0.2rem' }}>상호지도</span>
+                    </a>
+                  )}
+                  <button 
+                    type="button"
+                    className="btn-secondary btn-sm" 
+                    title="이 대상자에게 바로 미팅 기록하기"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate('/meetings', { state: { selectedContactId: contact.id } });
+                    }}
+                    style={{ padding: '0.35rem 0.5rem', display: 'flex', alignItems: 'center', backgroundColor: 'var(--accent-color)', color: 'white', border: 'none', borderRadius: '4px' }}
+                  >
+                    <Calendar size={13} /> <span style={{ fontSize: '0.7rem', fontWeight: 600, marginLeft: '0.2rem' }}>미팅</span>
+                  </button>
+                </div>
+
+                {/* 실제 주소값 아래에 한줄로 출력 */}
+                {contact.address && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem', color: 'var(--text-secondary)', borderTop: '1px dashed var(--border-color)', paddingTop: '0.4rem', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <MapPin size={12} style={{ flexShrink: 0 }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }} title={contact.address}>
+                      {contact.address} ({contact.city} {contact.district})
+                    </span>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      );
+    });
+  }, [filteredContacts, expandedContactId, navigate, handleStartEdit]);
 
   return (
     <div className="contacts-page">
@@ -294,173 +466,7 @@ const Contacts = () => {
         {loading ? (
           <div className="loading" style={{ textAlign: 'center', padding: '3rem', width: '100%' }}>로딩 중...</div>
         ) : filteredContacts.length > 0 ? (
-          filteredContacts.map(contact => {
-            const isExpanded = expandedContactId === contact.id;
-            return (
-              <div 
-                key={contact.id} 
-                className={`contact-card ${isExpanded ? 'expanded' : 'collapsed'}`}
-                style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column' }}
-                onClick={() => setExpandedContactId(isExpanded ? null : contact.id)}
-              >
-                {/* 카드 헤더 (항상 노출) */}
-                <div 
-                  className="contact-card-header" 
-                  style={{ 
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    alignItems: 'center', 
-                    borderBottom: isExpanded ? '1px solid var(--border-color)' : 'none',
-                    padding: '0.85rem 1rem'
-                  }}
-                >
-                  <div className="contact-company" style={{ fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                    <Building size={15} style={{ color: 'var(--accent-color)', flexShrink: 0 }}/> 
-                    <span style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
-                      {contact.company}
-                      {contact.name && (
-                        <>
-                          <span style={{ margin: '0 0.3rem', color: 'var(--text-secondary)' }}>-</span>
-                          <span style={{ fontWeight: 400, color: 'var(--text-secondary)' }}>{contact.name}</span>
-                        </>
-                      )}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      style={{ 
-                        padding: '0.15rem 0.45rem', 
-                        fontSize: '0.7rem', 
-                        borderRadius: '4px', 
-                        border: '1px solid var(--border-color)', 
-                        marginRight: '0.2rem',
-                        cursor: 'pointer',
-                        backgroundColor: 'var(--bg-secondary)',
-                        color: 'var(--text-primary)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        fontWeight: 500
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleStartEdit(contact);
-                      }}
-                    >
-                      수정
-                    </button>
-                    <ChevronRight 
-                      size={16} 
-                      style={{ 
-                        transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', 
-                        transition: 'transform 0.2s',
-                        color: 'var(--text-secondary)'
-                      }} 
-                    />
-                  </div>
-                </div>
-                
-                {/* 확장 상세 구역 */}
-                {isExpanded && (
-                  <>
-                    {/* 카드 본문 */}
-                    <div className="contact-body" onClick={(e) => e.stopPropagation()} style={{ padding: '1rem', backgroundColor: 'var(--bg-secondary)' }}>
-                      <div className="contact-name" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                        <User size={22} className="contact-avatar"/>
-                        <div>
-                          <h3 style={{ fontSize: '0.95rem', fontWeight: 600, margin: 0 }}>
-                            {contact.name} <span style={{ fontSize: '0.8rem', fontWeight: 400, color: 'var(--text-secondary)', marginLeft: '0.3rem' }}>{contact.title || '담당자'}</span>
-                          </h3>
-                        </div>
-                      </div>
-                      <div className="contact-details" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.85rem' }}>
-                        {contact.phone && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                            <Phone size={13} style={{ color: 'var(--text-secondary)' }}/> {contact.phone}
-                          </div>
-                        )}
-                        {contact.email && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                            <Mail size={13} style={{ color: 'var(--text-secondary)' }}/> {contact.email}
-                          </div>
-                        )}
-                        {contact.fax && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                            <FileText size={13} style={{ color: 'var(--text-secondary)' }}/> 팩스: {contact.fax}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    
-                    {/* 카드 푸터 (행동 버튼 및 주소지 한 줄 출력) */}
-                    <div className="contact-footer" onClick={(e) => e.stopPropagation()} style={{ padding: '0.75rem 1rem', borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', borderBottomLeftRadius: 'var(--radius-lg)', borderBottomRightRadius: 'var(--radius-lg)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                        {contact.phone && (
-                          <a href={`tel:${contact.phone}`} className="btn-secondary btn-sm" title="전화걸기" style={{ padding: '0.35rem 0.5rem', display: 'flex', alignItems: 'center', borderRadius: '4px' }}>
-                            <Phone size={13} />
-                          </a>
-                        )}
-                        {contact.phone && (
-                          <a href={`sms:${contact.phone}`} className="btn-secondary btn-sm" title="문자보내기" style={{ padding: '0.35rem 0.5rem', display: 'flex', alignItems: 'center', borderRadius: '4px' }}>
-                            <MessageSquare size={13} />
-                          </a>
-                        )}
-                        {contact.address && (
-                          <button 
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigator.clipboard.writeText(contact.address).then(() => toast.success('주소가 복사되었습니다.'));
-                            }}
-                            className="btn-secondary btn-sm" 
-                            title="주소 텍스트 복사"
-                            style={{ padding: '0.35rem 0.5rem', display: 'flex', alignItems: 'center', backgroundColor: '#03C75A', color: 'white', border: 'none', borderRadius: '4px' }}
-                          >
-                            <Copy size={13} /> <span style={{ fontSize: '0.7rem', fontWeight: 600, marginLeft: '0.2rem' }}>주소복사</span>
-                          </button>
-                        )}
-                        {contact.company && (
-                          <a 
-                            href={`https://map.naver.com/v5/search/${encodeURIComponent(contact.company)}`} 
-                            target="_blank" 
-                            rel="noopener noreferrer" 
-                            className="btn-secondary btn-sm" 
-                            title="네이버지도 상호명으로 검색"
-                            style={{ padding: '0.35rem 0.5rem', display: 'flex', alignItems: 'center', backgroundColor: '#2d60ff', color: 'white', border: 'none', borderRadius: '4px' }}
-                          >
-                            <Building size={13} /> <span style={{ fontSize: '0.7rem', fontWeight: 600, marginLeft: '0.2rem' }}>상호지도</span>
-                          </a>
-                        )}
-                        <button 
-                          type="button"
-                          className="btn-secondary btn-sm" 
-                          title="이 대상자에게 바로 미팅 기록하기"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate('/meetings', { state: { selectedContactId: contact.id } });
-                          }}
-                          style={{ padding: '0.35rem 0.5rem', display: 'flex', alignItems: 'center', backgroundColor: 'var(--accent-color)', color: 'white', border: 'none', borderRadius: '4px' }}
-                        >
-                          <Calendar size={13} /> <span style={{ fontSize: '0.7rem', fontWeight: 600, marginLeft: '0.2rem' }}>미팅</span>
-                        </button>
-                      </div>
-
-                      {/* 실제 주소값 아래에 한줄로 출력 */}
-                      {contact.address && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem', color: 'var(--text-secondary)', borderTop: '1px dashed var(--border-color)', paddingTop: '0.4rem', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          <MapPin size={12} style={{ flexShrink: 0 }} />
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }} title={contact.address}>
-                            {contact.address} ({contact.city} {contact.district})
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })
+          renderedContacts
         ) : (
           <div className="no-data" style={{ gridColumn: 'span 3', textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
             검색 결과가 없습니다.
