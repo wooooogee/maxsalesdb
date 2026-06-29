@@ -1,0 +1,144 @@
+/* MapRoute.css */
+.map-route-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 120px); /* Fill space in layout */
+  gap: 1rem;
+}
+
+@media (max-width: 768px) {
+  .map-route-page {
+    height: calc(100vh - 150px);
+  }
+}
+
+.map-container-wrapper {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+}
+
+.naver-route-map {
+  width: 100%;
+  height: 100%;
+  background-color: var(--bg-primary);
+}
+
+/* Floating Route Panel */
+.route-panel {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  background-color: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+  z-index: 10;
+  box-shadow: var(--shadow-lg);
+  max-height: 40%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.route-panel h4 {
+  font-size: 0.9rem;
+  font-weight: 700;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.route-sequence-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0.25rem 0;
+}
+
+.route-sequence-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+  padding: 0.35rem 0.5rem;
+  background-color: var(--bg-primary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+}
+
+.route-seq-num {
+  background-color: var(--accent-color);
+  color: white;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  margin-right: 0.4rem;
+}
+
+.route-controls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.route-client-selector-box {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.route-client-selector-box label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: block;
+  margin-bottom: 0.4rem;
+}
+
+.route-select-wrapper {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.route-select-wrapper select {
+  flex: 1;
+}
+
+/* Info Window Styling */
+.map-info-window {
+  padding: 0.5rem;
+  min-width: 150px;
+  font-family: var(--font-family);
+}
+
+.map-info-window h4 {
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-bottom: 0.2rem;
+}
+
+.map-info-window p {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.4rem;
+}
+
+.map-info-window button {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 3px;
+}
