@@ -26,8 +26,10 @@ import {
 import toast from 'react-hot-toast';
 import './Dashboard.css';
 import { parseKoreanDateTime } from '../dateUtils';
+import { useUser } from '../UserContext';
 
 const Dashboard = () => {
+  const { user, changeUser } = useUser();
   const [clients, setClients] = useState([]);
   const [meetings, setMeetings] = useState([]);
   const [interactions, setInteractions] = useState([]);
@@ -51,6 +53,10 @@ const Dashboard = () => {
 
   const handleDirectAddMeeting = async (e) => {
     e.preventDefault();
+    if (!user) {
+      toast.error('사용자를 먼저 선택해 주세요.');
+      return;
+    }
     if (!newMeetClient) {
       toast.error('고객사를 선택해 주세요.');
       return;
@@ -330,8 +336,45 @@ const Dashboard = () => {
   return (
     <div className="dashboard-container">
       {/* Header */}
-      <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
         <h2 style={{ fontSize: '1.4rem', fontWeight: 700, margin: 0 }}>홈</h2>
+        
+        {/* User Selection UI */}
+        <div style={{ backgroundColor: user ? 'var(--bg-secondary)' : '#fee2e2', padding: '0.5rem 1rem', borderRadius: 'var(--radius-md)', border: user ? '1px solid var(--border-color)' : '1px solid #f87171', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {user ? (
+            <>
+              <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>현재 접속자: <span style={{ color: 'var(--primary-color)' }}>{user}</span></span>
+              <button 
+                className="btn-secondary" 
+                style={{ padding: '0.2rem 0.5rem', fontSize: '0.8rem' }}
+                onClick={() => changeUser('')}
+              >
+                변경
+              </button>
+            </>
+          ) : (
+            <>
+              <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#b91c1c' }}>사용자를 선택해주세요 *</span>
+              <select 
+                value={user || ''} 
+                onChange={(e) => {
+                  if (e.target.value === '직접입력') {
+                    const customUser = window.prompt("사용자 이름을 입력하세요:");
+                    if (customUser) changeUser(customUser);
+                  } else if (e.target.value) {
+                    changeUser(e.target.value);
+                  }
+                }}
+                style={{ padding: '0.3rem', borderRadius: '4px', border: '1px solid #ccc' }}
+              >
+                <option value="" disabled>-- 사용자 선택 --</option>
+                <option value="김학민">김학민</option>
+                <option value="김진욱">김진욱</option>
+                <option value="직접입력">직접입력</option>
+              </select>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Calendar Area */}

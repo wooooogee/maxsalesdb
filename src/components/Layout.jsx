@@ -3,6 +3,8 @@ import { Outlet, NavLink } from 'react-router-dom';
 import { Home, Users, MessageSquare, Calendar, FileText, Navigation } from 'lucide-react';
 import './Layout.css';
 
+import NotificationManager from './NotificationManager';
+
 const Layout = () => {
   const navLinks = [
     { to: '/', icon: <Home size={20} />, label: '홈' },
@@ -36,7 +38,8 @@ const Layout = () => {
       <main className="main-content">
         <header className="top-header">
           <div className="header-title">미팅 및 상담 기록 시스템</div>
-          <div className="header-actions">
+          <div className="header-actions" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <NotificationManager />
             <button className="btn-icon">
               <Calendar size={20} />
             </button>

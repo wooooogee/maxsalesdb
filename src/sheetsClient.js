@@ -885,5 +885,44 @@ export const sheetsClient = {
       setLocalStorageData(sheetName, updated);
       return true;
     }
+  },
+
+  // 파일 업로드 (구글 드라이브)
+  uploadFile: async (file) => {
+    if (!isGasConfigured()) {
+      throw new Error('구글 앱스 스크립트 웹앱 URL이 설정되어 있지 않습니다.');
+    }
+
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        try {
+          const base64Data = reader.result.split(',')[1];
+          const response = await fetch(GAS_URL, {
+            method: 'POST',
+            mode: 'cors',
+            headers: {
+              'Content-Type': 'text/plain',
+            },
+            body: JSON.stringify({
+              action: 'uploadFile',
+              fileName: file.name,
+              mimeType: file.type,
+              base64Data: base64Data
+            })
+          });
+          const result = await response.json();
+          if (result.success && result.url) {
+            resolve(result.url);
+          } else {
+            reject(new Error(result.error || 'Upload failed'));
+          }
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   }
 };

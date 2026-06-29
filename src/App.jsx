@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+import { UserProvider } from './UserContext';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Contacts from './pages/Contacts';
@@ -9,9 +10,10 @@ import MapRoute from './pages/MapRoute';
 
 function App() {
   return (
-    <Router>
-      <Toaster position="top-right" />
-      <Routes>
+    <UserProvider>
+      <Router>
+        <Toaster position="top-right" />
+        <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />
           <Route path="contacts" element={<Contacts />} />
@@ -20,7 +22,8 @@ function App() {
           <Route path="chat" element={<Chat />} />
         </Route>
       </Routes>
-    </Router>
+      </Router>
+    </UserProvider>
   );
 }
 

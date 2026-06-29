@@ -43,9 +43,44 @@ function doPost(e) {
     sheet.appendRow(headers);
   }
   
-  var headers = sheet.getDataRange().getValues()[0];
+  var headers = sheet ? sheet.getDataRange().getValues()[0] : [];
   
-  if (action === "insert") {
+  // 새로 들어온 데이터의 키 중에 기존 헤더에 없는 것이 있으면 컬럼 추가
+  var newKeys = params.data ? Object.keys(params.data) : [];
+  var headerChanged = false;
+  if (sheet) {
+    for (var k = 0; k < newKeys.length; k++) {
+      if (headers.indexOf(newKeys[k]) === -1) {
+        headers.push(newKeys[k]);
+        sheet.getRange(1, headers.length).setValue(newKeys[k]);
+        headerChanged = true;
+      }
+    }
+  }
+  
+  if (action === "uploadFile") {
+    try {
+      var folderName = "맥스세일즈_첨부파일";
+      var folders = DriveApp.getFoldersByName(folderName);
+      var folder;
+      if (folders.hasNext()) {
+        folder = folders.next();
+      } else {
+        folder = DriveApp.createFolder(folderName);
+        folder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      }
+      
+      var decoded = Utilities.base64Decode(params.base64Data);
+      var blob = Utilities.newBlob(decoded, params.mimeType, params.fileName);
+      var file = folder.createFile(blob);
+      
+      return ContentService.createTextOutput(JSON.stringify({success: true, url: file.getUrl()}))
+        .setMimeType(ContentService.MimeType.JSON);
+    } catch(e) {
+      return ContentService.createTextOutput(JSON.stringify({error: e.toString()}))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  } else if (action === "insert") {
     var newRow = [];
     for (var i = 0; i < headers.length; i++) {
       newRow.push(params.data[headers[i]] !== undefined ? params.data[headers[i]] : "");

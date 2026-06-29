@@ -14,6 +14,7 @@ import {
   FileText,
   Upload,
   X,
+  Paperclip,
   Play,
   Volume2,
   MapPin,
@@ -21,6 +22,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useUser } from '../UserContext';
 import './MeetingLog.css';
 import { parseKoreanDateTime } from '../dateUtils';
 
@@ -39,6 +41,7 @@ const fileToBase64 = (fileOrBlob) => {
 
 const MeetingLog = () => {
   const location = useLocation();
+  const { user } = useUser();
   const [content, setContent] = useState('');
   const [summary, setSummary] = useState('');
   const [isSummarizing, setIsSummarizing] = useState(false);
@@ -142,6 +145,10 @@ const MeetingLog = () => {
 
   const handleQuickClientSubmit = async (e) => {
     e.preventDefault();
+    if (!user) {
+      toast.error('사용자를 먼저 선택해 주세요.');
+      return;
+    }
 
     try {
       toast.loading('신규 대상자를 저장하고 선택하는 중...', { id: 'quick-client' });
@@ -169,7 +176,8 @@ const MeetingLog = () => {
         city: parsedCity,
         district: parsedDistrict,
         latitude: '',
-        longitude: ''
+        longitude: '',
+        creator: user
       };
 
       const saved = await sheetsClient.insert('clients', clientPayload);
@@ -424,6 +432,10 @@ const MeetingLog = () => {
   };
 
   const handleSave = async () => {
+    if (!user) {
+      toast.error('사용자를 먼저 선택해 주세요.');
+      return;
+    }
     if (!selectedContactId) {
       toast.error('미팅 대상자를 선택해 주세요.');
       return;
@@ -450,56 +462,89 @@ const MeetingLog = () => {
     const client = contacts.find(c => c.id === selectedContactId);
     const clientName = client ? `${client.company} - ${client.name}` : '알 수 없음';
 
-    try {
-      toast.loading('영업 활동 및 미팅 일정을 구글 시트에 기록 중...', { id: 'interaction-save' });
+    // 1) Prepare data
+    const tempId = 'temp_' + Date.now();
+    const interactionData = {
+      id: tempId,
+      client_id: selectedContactId,
+      client_name: clientName,
+      date: new Date().toISOString().substring(0, 16).replace('T', ' '),
+      type: contactType,
+      summary: summary || content,
+      content: content,
+      attachments: (window.meetingAttachments || []).join(','),
+      next_meeting_date: parsedMeetingDate,
+      creator: user
+    };
 
-      // 1) Save to interactions sheet
-      const interactionData = {
+    let meetingData = null;
+    if (hasNextMeeting) {
+      const finalMeetingType = nextMeetingType === '직접입력' ? customMeetingType : nextMeetingType;
+      meetingData = {
+        id: 'temp_meet_' + Date.now(),
         client_id: selectedContactId,
         client_name: clientName,
-        date: new Date().toISOString().substring(0, 16).replace('T', ' '),
-        type: contactType,
-        summary: summary || content,
-        content: content,
-        next_meeting_date: parsedMeetingDate
+        date: parsedMeetingDate,
+        type: finalMeetingType || '미팅',
+        result: '진행 예정 (준비 단계)',
+        creator: user
       };
+    }
 
-      await sheetsClient.insert('interactions', interactionData);
+    // 2) Optimistic UI Update & Cache Update
+    toast.success('기록 저장을 시작했습니다. (화면 이동 가능)', { id: 'interaction-save' });
+    
+    const cachedStr = localStorage.getItem('sheet_v3_interactions');
+    let cachedInteractions = [];
+    if (cachedStr) {
+      try {
+        cachedInteractions = JSON.parse(cachedStr);
+      } catch (e) {}
+    }
+    const updatedCache = [interactionData, ...cachedInteractions];
+    localStorage.setItem('sheet_v3_interactions', JSON.stringify(updatedCache));
 
-      // 2) Save to meetings sheet
-      if (hasNextMeeting) {
-        const finalMeetingType = nextMeetingType === '직접입력' ? customMeetingType : nextMeetingType;
-        const meetingData = {
-          client_id: selectedContactId,
-          client_name: clientName,
-          date: parsedMeetingDate,
-          type: finalMeetingType || '미팅',
-          result: '진행 예정 (준비 단계)'
-        };
+    // Reset State Immediately
+    setContent('');
+    setSummary('');
+    setMaterialSent('');
+    setHasNextMeeting(false);
+    setNextMeetingDate('');
+    setSelectedContactId('');
+    window.meetingAttachments = [];
+    removeAudioSource();
+
+    // 3) Background Save
+    try {
+      const savedInteraction = await sheetsClient.insert('interactions', interactionData);
+      
+      if (meetingData) {
         await sheetsClient.insert('meetings', meetingData);
       }
-
-      toast.success('기록 및 캘린더 일정이 저장되었습니다!', { id: 'interaction-save' });
       
-      // 상담기록 목록 캐시 비우기 (갱신 유도)
-      localStorage.removeItem('sheet_v3_interactions');
+      // 서버에서 발급받은 ID로 캐시 업데이트
+      const latestCacheStr = localStorage.getItem('sheet_v3_interactions');
+      if (latestCacheStr) {
+        const latestCache = JSON.parse(latestCacheStr);
+        const fixedCache = latestCache.map(i => i.id === tempId ? savedInteraction : i);
+        localStorage.setItem('sheet_v3_interactions', JSON.stringify(fixedCache));
+      }
+    } catch (err) {
+      console.error("Save failed:", err);
+      toast.error('기록 저장 중 오류가 발생했습니다: ' + err.message);
       
-      // Reset State
-      setContent('');
-      setSummary('');
-      setMaterialSent('');
-      setHasNextMeeting(false);
-      setNextMeetingDate('');
-      setSelectedContactId('');
-      removeAudioSource();
-    } catch (error) {
-      toast.error('저장 실패: ' + error.message, { id: 'interaction-save' });
+      // 에러 시 임시 항목 제거
+      const errCacheStr = localStorage.getItem('sheet_v3_interactions');
+      if (errCacheStr) {
+        const errCache = JSON.parse(errCacheStr);
+        localStorage.setItem('sheet_v3_interactions', JSON.stringify(errCache.filter(i => i.id !== tempId)));
+      }
     }
   };
 
   return (
     <div className="card meeting-log-page" style={{ paddingBottom: '3rem' }}>
-      <h2 style={{ marginBottom: '1.25rem', fontSize: '1.3rem', fontWeight: 700 }}>미팅내용 요약 및 스케줄링</h2>
+      <h2 style={{ marginBottom: '1.25rem', fontSize: '1.3rem', fontWeight: 700 }}>상담 기록 작성</h2>
       
       {/* 1. Target Selection */}
       <div className="form-group" style={{ marginBottom: '1.25rem', position: 'relative' }}>
@@ -771,15 +816,86 @@ const MeetingLog = () => {
         </div>
       )}
 
-      {/* 4. 소통 내용 전문 (미팅 스케줄링 바로 아래) */}
+      {/* 4. 소통 내용 전문 */}
       <div className="form-group" style={{ marginBottom: '1.5rem' }}>
         <label>미팅 내용</label>
         <textarea 
-          rows="5" 
+          rows="10" 
           placeholder=""
           value={content}
           onChange={(e) => setContent(e.target.value)}
         />
+      </div>
+
+      {/* 4.5. 파일 및 사진 첨부 */}
+      <div style={{ marginBottom: '1.5rem', border: '1px solid var(--border-color)', padding: '1rem', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--bg-secondary)' }}>
+        <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem' }}>
+          <Paperclip size={16} /> 사진 및 파일 첨부
+        </label>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+            {(Array.isArray(window.meetingAttachments) ? window.meetingAttachments : []).map((url, idx) => (
+              <div key={idx} style={{ position: 'relative', display: 'inline-block', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '0.2rem', backgroundColor: 'var(--bg-primary)' }}>
+                <a href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.75rem', color: 'var(--accent-color)', textDecoration: 'underline' }}>첨부파일 {idx + 1} 보기</a>
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    const newAtt = [...window.meetingAttachments];
+                    newAtt.splice(idx, 1);
+                    window.meetingAttachments = newAtt;
+                    // Trigger re-render by doing a dummy state update
+                    setMaterialSent(prev => prev + ' '); setTimeout(() => setMaterialSent(prev => prev.trim()), 0);
+                  }}
+                  style={{ position: 'absolute', top: '-8px', right: '-8px', background: 'white', borderRadius: '50%', color: 'var(--danger-color)', padding: '2px', border: '1px solid var(--border-color)' }}
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'nowrap' }}>
+            <input 
+              type="file" 
+              id="meeting-file-upload" 
+              style={{ display: 'none' }}
+              onChange={async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                if (file.size > 50 * 1024 * 1024) {
+                  toast.error('파일 크기는 50MB 이하여야 합니다.');
+                  return;
+                }
+                const btn = document.getElementById('meeting-upload-btn');
+                if (btn) btn.disabled = true;
+                const loadingToast = toast.loading('파일을 업로드하는 중...');
+                try {
+                  const url = await sheetsClient.uploadFile(file);
+                  if (!window.meetingAttachments) window.meetingAttachments = [];
+                  window.meetingAttachments.push(url);
+                  toast.success('파일 첨부 완료!', { id: loadingToast });
+                  setMaterialSent(prev => prev + ' '); setTimeout(() => setMaterialSent(prev => prev.trim()), 0); // Trigger re-render hack
+                } catch (err) {
+                  toast.error('파일 업로드 실패: ' + err.message, { id: loadingToast });
+                } finally {
+                  if (btn) btn.disabled = false;
+                  e.target.value = '';
+                }
+              }}
+            />
+            <button 
+              type="button" 
+              id="meeting-upload-btn"
+              className="btn-secondary btn-sm"
+              onClick={() => document.getElementById('meeting-file-upload').click()}
+              style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
+            >
+              파일 선택하기
+            </button>
+            <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>최대 50MB</span>
+          </div>
+        </div>
       </div>
 
       {/* 5. 통화 녹음 파일 및 음성 메모 (그 아래에 위치!) */}
@@ -860,18 +976,26 @@ const MeetingLog = () => {
       {/* 6. Summary Block */}
       <div className="form-group" style={{ marginTop: '1rem' }}>
         <label>활동 결과 요약 (AI 자동 요약 내용)</label>
-        <input 
-          type="text" 
-          placeholder="활동 결과 한줄 요약..." 
+        <textarea 
           value={summary}
           onChange={(e) => setSummary(e.target.value)}
+          placeholder="활동 결과 한줄 요약..."
+          style={{ width: '100%', minHeight: '60px', padding: '0.6rem 0.75rem', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.85rem', boxSizing: 'border-box', resize: 'vertical' }}
         />
       </div>
 
-      {/* 7. Save Trigger */}
-      <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end' }}>
-        <button type="button" className="btn-primary" onClick={handleSave} style={{ padding: '0.75rem 2rem', fontSize: '1.05rem' }}>
-          <Save size={18} /> 저장
+      {/* 7. Sticky Save Trigger */}
+      <div style={{ 
+        position: 'sticky', 
+        bottom: 0, 
+        marginTop: '2rem', 
+        backgroundColor: 'var(--bg-primary)', 
+        padding: '1rem 0',
+        borderTop: '1px solid var(--border-color)',
+        zIndex: 10
+      }}>
+        <button type="button" className="btn-primary" onClick={handleSave} style={{ width: '100%', padding: '0.85rem', fontSize: '1.05rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }}>
+          <Save size={18} /> 저장하기
         </button>
       </div>
 

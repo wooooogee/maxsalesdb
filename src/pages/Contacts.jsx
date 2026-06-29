@@ -17,9 +17,11 @@ import {
   Calendar
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useUser } from '../UserContext';
 import './Contacts.css';
 
 const Contacts = () => {
+  const { user } = useUser();
   const navigate = useNavigate();
   const [contacts, setContacts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -181,6 +183,10 @@ const Contacts = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!user) {
+      toast.error('사용자를 먼저 선택해 주세요.');
+      return;
+    }
 
     const isEdit = !!formData.id;
     const finalFormData = {
@@ -188,6 +194,7 @@ const Contacts = () => {
       company: formData.company || '미지정 업체',
       name: formData.name || '미지정 담당자',
       address: formData.address || '',
+      creator: user,
     };
 
     try {
@@ -347,7 +354,16 @@ const Contacts = () => {
                   }}
                 >
                   <div className="contact-company" style={{ fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                    <Building size={15} style={{ color: 'var(--accent-color)' }}/> {contact.company}
+                    <Building size={15} style={{ color: 'var(--accent-color)', flexShrink: 0 }}/> 
+                    <span style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+                      {contact.company}
+                      {contact.name && (
+                        <>
+                          <span style={{ margin: '0 0.3rem', color: 'var(--text-secondary)' }}>-</span>
+                          <span style={{ fontWeight: 400, color: 'var(--text-secondary)' }}>{contact.name}</span>
+                        </>
+                      )}
+                    </span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     <button
@@ -373,7 +389,6 @@ const Contacts = () => {
                     >
                       수정
                     </button>
-                    <span className="contact-recommender" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>소개: {contact.recommender || '없음'}</span>
                     <ChevronRight 
                       size={16} 
                       style={{ 

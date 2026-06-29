@@ -179,16 +179,19 @@
 }
 
 .btn-send {
-  width: 44px;
   height: 44px;
-  border-radius: 50%;
+  padding: 0 1rem;
+  border-radius: 2rem;
   background-color: var(--accent-color);
   color: white;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-weight: 600;
+  font-size: 0.95rem;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .btn-send:hover {
   background-color: var(--accent-hover);
-  transform: scale(1.05);
 }
