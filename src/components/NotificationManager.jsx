@@ -40,9 +40,25 @@ const NotificationManager = () => {
     }
   };
 
+  const playSound = () => {
+    try {
+      // 짧고 명쾌한 알림음 (무료 효과음 CDN)
+      const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+      audio.play().catch(e => console.warn('Audio play blocked by browser:', e));
+    } catch (e) {
+      console.warn('Audio play error:', e);
+    }
+  };
+
   const showNotification = (title, body) => {
     if (enabled && Notification.permission === 'granted') {
-      new Notification(title, { body, icon: '/favicon.ico' });
+      new Notification(title, { body, icon: '/favicon.ico', vibrate: [200, 100, 200] });
+      
+      // 소리 재생 및 기기 진동 (모바일 환경 지원)
+      playSound();
+      if (navigator.vibrate) {
+        navigator.vibrate([200, 100, 200]);
+      }
     }
   };
 
