@@ -45,13 +45,8 @@ const Contacts = () => {
     company: '', title: '', name: '', recommender: '', phone: '', email: '', fax: '',
     address: '', city: '', district: '', latitude: '', longitude: ''
   });
-  const [addressSearch, setAddressSearch] = useState('');
-  const [mapLoaded, setMapLoaded] = useState(false);
-  
-  // Map References
-  const miniMapRef = useRef(null);
-  const miniMapObj = useRef(null);
-  const markerObj = useRef(null);
+
+
 
   useEffect(() => {
     fetchContacts();
@@ -75,46 +70,7 @@ const Contacts = () => {
     }
   }, [contacts, selectedCity]);
 
-  // Load Naver map script when modal opens
-  useEffect(() => {
-    if (isModalOpen) {
-      loadNaverMapScript()
-        .then(() => {
-          setMapLoaded(true);
-          initMiniMap();
-        })
-        .catch(err => {
-          console.warn(err.message);
-          setMapLoaded(false);
-        });
-    } else {
-      miniMapObj.current = null;
-      markerObj.current = null;
-    }
-  }, [isModalOpen]);
 
-  const initMiniMap = () => {
-    if (!window.naver || !window.naver.maps || !miniMapRef.current) return;
-    
-    // Default: Center of Seoul
-    const defaultCenter = new window.naver.maps.LatLng(37.5665, 126.9780);
-    const mapOptions = {
-      center: defaultCenter,
-      zoom: 14,
-      zoomControl: false,
-      mapTypeControl: false
-    };
-
-    const map = new window.naver.maps.Map(miniMapRef.current, mapOptions);
-    miniMapObj.current = map;
-
-    const marker = new window.naver.maps.Marker({
-      position: defaultCenter,
-      map: map,
-      visible: false
-    });
-    markerObj.current = marker;
-  };
 
   const fetchContacts = async () => {
     try {
@@ -139,54 +95,18 @@ const Contacts = () => {
     }
   };
 
-  const handleSearchAddress = async (silentError = false, query = addressSearch) => {
-    if (!query.trim()) {
-      if (!silentError) toast.error('검색할 주소를 입력하세요.');
-      return;
-    }
 
-    try {
-      if (!silentError) toast.loading('주소 좌표를 검색 중...', { id: 'geo-search' });
-      const result = await geocodeAddress(query);
-      
-      setFormData(prev => ({
-        ...prev,
-        address: result.address,
-        city: result.city,
-        district: result.district,
-        latitude: result.latitude.toString(),
-        longitude: result.longitude.toString()
-      }));
-
-      if (!silentError) toast.success('주소를 찾았습니다.', { id: 'geo-search' });
-      else toast.dismiss('geo-search');
-
-      // Update map position
-      if (miniMapObj.current && markerObj.current && window.naver) {
-        const newPos = new window.naver.maps.LatLng(result.latitude, result.longitude);
-        miniMapObj.current.setCenter(newPos);
-        markerObj.current.setPosition(newPos);
-        markerObj.current.setVisible(true);
-      }
-    } catch (err) {
-      if (!silentError) toast.error(err.message || '주소 검색에 실패했습니다.', { id: 'geo-search' });
-      else toast.dismiss('geo-search');
-      
-      // Fallback: manually fill mock coords or allow manual typing
-      setFormData(prev => ({
-        ...prev,
-        address: query,
-        city: '서울특별시', // Fallback defaults
-        district: '서초구',
-        latitude: '37.4979',
-        longitude: '127.0276'
-      }));
-    }
-  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData(prev => {
+      const next = { ...prev, [name]: value };
+      if (name === 'address') {
+        next.latitude = '';
+        next.longitude = '';
+      }
+      return next;
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -197,13 +117,28 @@ const Contacts = () => {
     }
 
     const isEdit = !!formData.id;
-    const finalFormData = {
+    let finalFormData = {
       ...formData,
       company: formData.company || '미지정 업체',
       name: formData.name || '미지정 담당자',
       address: formData.address || '',
       creator: user,
     };
+
+    if (finalFormData.address && (!finalFormData.latitude || !finalFormData.longitude)) {
+      try {
+        const geoResult = await geocodeAddress(finalFormData.address);
+        finalFormData.city = geoResult.city;
+        finalFormData.district = geoResult.district;
+        finalFormData.latitude = geoResult.latitude.toString();
+        finalFormData.longitude = geoResult.longitude.toString();
+      } catch (err) {
+        finalFormData.city = finalFormData.city || '서울특별시';
+        finalFormData.district = finalFormData.district || '서초구';
+        finalFormData.latitude = finalFormData.latitude || '37.4979';
+        finalFormData.longitude = finalFormData.longitude || '127.0276';
+      }
+    }
 
     try {
       toast.loading(isEdit ? '고객 정보를 수정하는 중...' : '고객을 등록하는 중...', { id: 'client-save' });
@@ -232,7 +167,6 @@ const Contacts = () => {
         company: '', title: '', name: '', recommender: '', phone: '', email: '', fax: '',
         address: '', city: '', district: '', latitude: '', longitude: ''
       });
-      setAddressSearch('');
     } catch (error) {
       toast.error('저장 실패: ' + error.message, { id: 'client-save' });
     }
@@ -240,18 +174,7 @@ const Contacts = () => {
 
   const handleStartEdit = (contact) => {
     setFormData(contact);
-    setAddressSearch(contact.address || '');
     setIsModalOpen(true);
-    
-    // 모달이 열리고 지도가 렌더링된 후 마커 위치 설정
-    setTimeout(() => {
-      if (miniMapObj.current && markerObj.current && window.naver && contact.latitude && contact.longitude) {
-        const pos = new window.naver.maps.LatLng(Number(contact.latitude), Number(contact.longitude));
-        miniMapObj.current.setCenter(pos);
-        markerObj.current.setPosition(pos);
-        markerObj.current.setVisible(true);
-      }
-    }, 300);
   };
 
   const requestDeleteContact = (id) => {
@@ -310,7 +233,6 @@ const Contacts = () => {
               company: '', title: '', name: '', recommender: '', phone: '', email: '', fax: '',
               address: '', city: '', district: '', latitude: '', longitude: ''
             });
-            setAddressSearch('');
             setIsModalOpen(true);
           }}
           style={{ whiteSpace: 'nowrap', padding: '0.4rem 0.6rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.2rem', flexShrink: 0 }}
@@ -586,64 +508,33 @@ const Contacts = () => {
 
               {/* Address Section */}
               <div className="address-search-group" style={{ gridColumn: 'span 2' }}>
-                <label>등록할 주소 (도로명 또는 지번)</label>
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                <label>등록할 주소 (정확한 길찾기를 위해 도로명/지번 권장)</label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <input 
                     type="text" 
                     name="address"
                     value={formData.address}
                     onChange={handleInputChange}
-                    placeholder="주소를 직접 입력하거나 아래에서 지도검색 하세요" 
+                    placeholder="도로명, 지번 주소 또는 상호명 입력..." 
                     style={{ flex: 1 }}
-                  />
-                  <button 
-                    type="button" 
-                    className="btn-primary" 
-                    style={{ padding: '0 1rem', whiteSpace: 'nowrap' }} 
-                    onClick={() => {
-                      if (!formData.address.trim()) return toast.error('주소를 입력하세요.');
-                      handleSearchAddress(false, formData.address);
-                    }}
-                  >
-                    좌표 확인
-                  </button>
-                </div>
-
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>주소를 모른다면 상호명으로 지도 검색 후 주소를 복사해오세요</label>
-                <div className="address-input-wrapper">
-                  <input 
-                    type="text" 
-                    placeholder="상호명 입력 후 지도검색..." 
-                    value={addressSearch}
-                    onChange={(e) => setAddressSearch(e.target.value)}
                   />
                   <button 
                     type="button" 
                     className="btn-secondary" 
                     style={{ padding: '0 1rem', whiteSpace: 'nowrap', backgroundColor: '#2d60ff', color: 'white', border: 'none' }} 
                     onClick={() => {
-                      if (!addressSearch.trim()) {
-                        toast.error('상호명을 입력하세요.');
+                      if (!formData.address.trim()) {
+                        toast.error('검색할 주소나 상호명을 입력하세요.');
                         return;
                       }
-                      window.open(`https://map.naver.com/v5/search/${encodeURIComponent(addressSearch)}`, '_blank');
+                      window.open(`https://map.naver.com/v5/search/${encodeURIComponent(formData.address)}`, '_blank');
                     }}
                   >
                     지도 검색
                   </button>
                 </div>
-                
-                {/* Mini Map Preview */}
-                <div className="map-preview-box" ref={miniMapRef}>
-                  {!mapLoaded ? (
-                    <div style={{ textAlign: 'center', padding: '1rem' }}>
-                      {!import.meta.env.VITE_NAVER_CLIENT_ID ? (
-                        <span>네이버 Client ID가 설정되지 않았습니다.<br/>주소 검색 후 마커 위치가 맵에 표현되지 않습니다.</span>
-                      ) : (
-                        <span>지도를 로드하는 중...</span>
-                      )}
-                    </div>
-                  ) : null}
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.4rem' }}>
+                  상호명으로 검색 후, 실제 주소를 찾아 붙여넣으시면 좋습니다. 저장 시 자동으로 위치가 변환됩니다.
                 </div>
               </div>
 
