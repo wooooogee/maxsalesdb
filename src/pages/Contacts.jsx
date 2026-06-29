@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { sheetsClient } from '../sheetsClient';
 import { loadNaverMapScript, geocodeAddress } from '../mapUtils';
 import { 
@@ -12,12 +13,14 @@ import {
   ChevronRight, 
   MapPin, 
   Navigation,
-  MessageSquare
+  MessageSquare,
+  Calendar
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './Contacts.css';
 
 const Contacts = () => {
+  const navigate = useNavigate();
   const [contacts, setContacts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -451,6 +454,18 @@ const Contacts = () => {
                             <Building size={13} /> <span style={{ fontSize: '0.7rem', fontWeight: 600, marginLeft: '0.2rem' }}>상호지도</span>
                           </a>
                         )}
+                        <button 
+                          type="button"
+                          className="btn-secondary btn-sm" 
+                          title="이 대상자에게 바로 미팅 기록하기"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate('/meetings', { state: { selectedContactId: contact.id } });
+                          }}
+                          style={{ padding: '0.35rem 0.5rem', display: 'flex', alignItems: 'center', backgroundColor: 'var(--accent-color)', color: 'white', border: 'none', borderRadius: '4px' }}
+                        >
+                          <Calendar size={13} /> <span style={{ fontSize: '0.7rem', fontWeight: 600, marginLeft: '0.2rem' }}>미팅</span>
+                        </button>
                       </div>
 
                       {/* 실제 주소값 아래에 한줄로 출력 */}

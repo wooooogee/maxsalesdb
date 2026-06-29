@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { sheetsClient } from '../sheetsClient';
 import { analyzeMeetingWithAI, analyzeAudioWithAI } from '../geminiClient';
 import { 
@@ -37,6 +38,7 @@ const fileToBase64 = (fileOrBlob) => {
 };
 
 const MeetingLog = () => {
+  const location = useLocation();
   const [content, setContent] = useState('');
   const [summary, setSummary] = useState('');
   const [isSummarizing, setIsSummarizing] = useState(false);
@@ -49,7 +51,7 @@ const MeetingLog = () => {
   
   // Contacts list
   const [contacts, setContacts] = useState([]);
-  const [selectedContactId, setSelectedContactId] = useState('');
+  const [selectedContactId, setSelectedContactId] = useState(location.state?.selectedContactId || '');
   const [searchContactTerm, setSearchContactTerm] = useState('');
   const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
   const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false);
@@ -115,6 +117,12 @@ const MeetingLog = () => {
       clearInterval(timerIntervalRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (location.state?.selectedContactId) {
+      setSelectedContactId(location.state.selectedContactId);
+    }
+  }, [location.state]);
 
   const fetchContacts = async () => {
     try {
