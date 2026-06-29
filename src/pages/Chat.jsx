@@ -47,11 +47,20 @@ const Chat = () => {
 
     fetchMessages();
     let unsubscribe = () => {};
+    let pollInterval = null;
+    
     if (isSupabaseConfigured()) {
       unsubscribe = setupRealtime();
+    } else {
+      // Supabase가 없을 경우 구글 시트 변경사항을 5초마다 폴링 (실시간 동기화 효과)
+      pollInterval = setInterval(() => {
+        fetchMessages(true);
+      }, 5000);
     }
+    
     return () => {
       unsubscribe();
+      if (pollInterval) clearInterval(pollInterval);
     };
   }, []);
 
@@ -76,14 +85,16 @@ const Chat = () => {
     localStorage.setItem('local_chat_messages', JSON.stringify(newMsgs));
   };
 
-  const fetchMessages = async () => {
+  const fetchMessages = async (silent = false) => {
     try {
-      const cached = localStorage.getItem('sheet_v3_chat_messages');
-      if (cached) {
-        setMessages(JSON.parse(cached));
-        setLoading(false);
-      } else {
-        setLoading(true);
+      if (!silent) {
+        const cached = localStorage.getItem('sheet_v3_chat_messages');
+        if (cached) {
+          setMessages(JSON.parse(cached));
+          setLoading(false);
+        } else {
+          setLoading(true);
+        }
       }
 
       if (isSupabaseConfigured()) {
@@ -94,17 +105,24 @@ const Chat = () => {
         const data = await sheetsClient.read('chat_messages');
         if (data && data.length > 0) {
           const sorted = data.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-          setMessages(sorted);
+          setMessages(prev => {
+            // 변경사항이 있을 때만 업데이트하여 불필요한 스크롤 이동 방지
+            const isSame = prev.length === sorted.length && JSON.stringify(prev) === JSON.stringify(sorted);
+            return isSame ? prev : sorted;
+          });
           localStorage.setItem('sheet_v3_chat_messages', JSON.stringify(sorted));
         } else {
-          setMessages(MOCK_MESSAGES);
+          setMessages(prev => {
+            const isSame = prev.length === MOCK_MESSAGES.length && JSON.stringify(prev) === JSON.stringify(MOCK_MESSAGES);
+            return isSame ? prev : MOCK_MESSAGES;
+          });
           localStorage.setItem('sheet_v3_chat_messages', JSON.stringify(MOCK_MESSAGES));
         }
       }
     } catch (error) {
       console.warn('Fetch failed, falling back to cached messages.', error.message);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
