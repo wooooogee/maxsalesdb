@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { sheetsClient } from '../sheetsClient';
-import { ChevronRight, Phone, MapPin, Mail, FileText, Save } from 'lucide-react';
+import { ChevronRight, Phone, MapPin, Mail, FileText, Save, Trash2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './MapRoute.css';
 import './MeetingLog.css'; // For shared .type-tabs styling
@@ -81,6 +81,42 @@ const MapRoute = () => {
       toast.error('수정 실패: ' + err.message);
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  // Delete modal states
+  const [deleteTargetId, setDeleteTargetId] = useState(null);
+  const [deletePassword, setDeletePassword] = useState('');
+
+  const requestDeleteInteraction = (e, id) => {
+    e.stopPropagation();
+    setDeleteTargetId(id);
+    setDeletePassword('');
+  };
+
+  const confirmDeleteInteraction = async () => {
+    if (deletePassword !== '0805') {
+      toast.error('비밀번호가 일치하지 않습니다.');
+      return;
+    }
+    
+    const id = deleteTargetId;
+    setDeleteTargetId(null);
+    setDeletePassword('');
+
+    try {
+      const toastId = toast.loading('기록을 삭제하는 중...');
+      await sheetsClient.delete('interactions', id);
+      
+      const updatedList = interactions.filter(item => item.id !== id);
+      setInteractions(updatedList);
+      localStorage.setItem('sheet_v3_interactions', JSON.stringify(updatedList));
+      
+      toast.success('기록이 삭제되었습니다.', { id: toastId });
+      setExpandedId(null);
+    } catch (err) {
+      console.error(err);
+      toast.error('삭제 실패: ' + err.message);
     }
   };
 
@@ -259,6 +295,15 @@ const MapRoute = () => {
                         </div>
                       </div>
                     </div>
+                    <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
+                      <button 
+                        type="button" 
+                        onClick={(e) => requestDeleteInteraction(e, editData.id)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.4rem 0.8rem', borderRadius: '4px', backgroundColor: '#ffebee', color: '#d32f2f', border: '1px solid #ffcdd2', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        <Trash2 size={14} /> 기록 삭제
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -282,6 +327,28 @@ const MapRoute = () => {
           >
             <Save size={18} /> {isUpdating ? '저장 중...' : '수정 사항 저장'}
           </button>
+        </div>
+      )}
+
+      {/* Password Modal */}
+      {deleteTargetId && (
+        <div className="modal-overlay" style={{ zIndex: 9999, alignItems: 'center', paddingBottom: 0 }}>
+          <div style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', width: '90%', maxWidth: '320px', textAlign: 'center', padding: '2rem 1.5rem', boxSizing: 'border-box' }}>
+            <h3 style={{ fontSize: '1.1rem', marginBottom: '0.5rem', fontWeight: 600 }}>비밀번호 확인</h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>기록을 삭제하시려면 비밀번호를 입력하세요.</p>
+            <input 
+              type="password" 
+              value={deletePassword} 
+              onChange={(e) => setDeletePassword(e.target.value)} 
+              placeholder="****" 
+              style={{ width: '100%', padding: '0.8rem', marginBottom: '1.5rem', borderRadius: '8px', border: '1px solid var(--border-color)', textAlign: 'center', letterSpacing: '0.3em', fontSize: '1.2rem', boxSizing: 'border-box' }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button className="btn-secondary" style={{ flex: 1, padding: '0.8rem' }} onClick={() => { setDeleteTargetId(null); setDeletePassword(''); }}>취소</button>
+              <button className="btn-primary" style={{ flex: 1, padding: '0.8rem', backgroundColor: '#d32f2f', border: 'none' }} onClick={confirmDeleteInteraction}>확인</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

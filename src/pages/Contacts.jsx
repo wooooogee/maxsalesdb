@@ -14,7 +14,8 @@ import {
   MapPin, 
   Navigation,
   MessageSquare,
-  Calendar
+  Calendar,
+  Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useUser } from '../UserContext';
@@ -28,6 +29,10 @@ const Contacts = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expandedContactId, setExpandedContactId] = useState(null);
+  
+  // Custom delete modal states
+  const [deleteTargetId, setDeleteTargetId] = useState(null);
+  const [deletePassword, setDeletePassword] = useState('');
 
   // Filters State
   const [selectedCity, setSelectedCity] = useState('');
@@ -244,6 +249,37 @@ const Contacts = () => {
         markerObj.current.setVisible(true);
       }
     }, 300);
+  };
+
+  const requestDeleteContact = (id) => {
+    setDeleteTargetId(id);
+    setDeletePassword('');
+  };
+
+  const confirmDeleteContact = async () => {
+    if (deletePassword !== '0805') {
+      toast.error('비밀번호가 일치하지 않습니다.');
+      return;
+    }
+    
+    const id = deleteTargetId;
+    setDeleteTargetId(null);
+    setDeletePassword('');
+
+    try {
+      toast.loading('대상자를 삭제하는 중...', { id: 'client-delete' });
+      await sheetsClient.delete('clients', id);
+      setContacts(prev => {
+        const next = prev.filter(c => c.id !== id);
+        localStorage.setItem('sheet_v3_clients', JSON.stringify(next));
+        return next;
+      });
+      toast.success('대상자가 삭제되었습니다.', { id: 'client-delete' });
+      setIsModalOpen(false);
+      setExpandedContactId(null);
+    } catch (err) {
+      toast.error('삭제 실패: ' + err.message, { id: 'client-delete' });
+    }
   };
 
   // Filter & Search Logic
@@ -575,11 +611,42 @@ const Contacts = () => {
                 </div>
               </div>
 
-              <div className="modal-actions">
-                <button type="button" className="btn-secondary" onClick={() => setIsModalOpen(false)}>취소</button>
-                <button type="submit" className="btn-primary">저장하기</button>
+              <div className="modal-actions" style={{ display: 'flex', gap: '0.5rem', width: '100%', marginTop: '1.5rem' }}>
+                <button type="button" className="btn-secondary" style={{ flex: 1 }} onClick={() => setIsModalOpen(false)}>취소</button>
+                {formData.id && (
+                  <button 
+                    type="button" 
+                    onClick={() => requestDeleteContact(formData.id)}
+                    style={{ flex: 1, backgroundColor: '#ffebee', color: '#d32f2f', border: '1px solid #ffcdd2', borderRadius: 'var(--radius-md)', fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    삭제
+                  </button>
+                )}
+                <button type="submit" className="btn-primary" style={{ flex: 2, fontSize: '1rem' }}>저장하기</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Password Modal */}
+      {deleteTargetId && (
+        <div className="modal-overlay" style={{ zIndex: 9999, alignItems: 'center', paddingBottom: 0 }}>
+          <div style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', width: '90%', maxWidth: '320px', textAlign: 'center', padding: '2rem 1.5rem', boxSizing: 'border-box' }}>
+            <h3 style={{ fontSize: '1.1rem', marginBottom: '0.5rem', fontWeight: 600 }}>비밀번호 확인</h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>삭제하시려면 비밀번호를 입력하세요.</p>
+            <input 
+              type="password" 
+              value={deletePassword} 
+              onChange={(e) => setDeletePassword(e.target.value)} 
+              placeholder="****" 
+              style={{ width: '100%', padding: '0.8rem', marginBottom: '1.5rem', borderRadius: '8px', border: '1px solid var(--border-color)', textAlign: 'center', letterSpacing: '0.3em', fontSize: '1.2rem', boxSizing: 'border-box' }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button className="btn-secondary" style={{ flex: 1, padding: '0.8rem' }} onClick={() => { setDeleteTargetId(null); setDeletePassword(''); }}>취소</button>
+              <button className="btn-primary" style={{ flex: 1, padding: '0.8rem', backgroundColor: '#d32f2f', border: 'none' }} onClick={confirmDeleteContact}>확인</button>
+            </div>
           </div>
         </div>
       )}

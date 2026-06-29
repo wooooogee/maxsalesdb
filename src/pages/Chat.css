@@ -195,3 +195,25 @@
 .btn-send:hover {
   background-color: var(--accent-hover);
 }
+
+@media (max-width: 500px) {
+  .chat-input-area {
+    padding: 0.75rem 0.6rem;
+    gap: 0.4rem;
+  }
+  .chat-input-area input {
+    min-width: 0;
+    padding: 0.6rem 0.8rem;
+    font-size: 0.9rem;
+  }
+  .btn-send {
+    padding: 0 0.8rem;
+    font-size: 0.85rem;
+  }
+  .attach-btn {
+    padding: 0 0.4rem;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+  }
+}

@@ -924,5 +924,34 @@ export const sheetsClient = {
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
+  },
+
+  // 데이터 삭제
+  delete: async (sheetName, id) => {
+    if (isGasConfigured()) {
+      const response = await fetch(GAS_URL, {
+        method: 'POST',
+        mode: 'cors',
+        headers: {
+          'Content-Type': 'text/plain',
+        },
+        body: JSON.stringify({
+          action: 'delete',
+          sheet: sheetName,
+          id: id
+        })
+      });
+      const result = await response.json();
+      if (result.error) {
+        throw new Error(result.error);
+      } else {
+        return true;
+      }
+    } else {
+      const localData = getLocalStorageData(sheetName);
+      const updated = localData.filter(item => item.id !== id);
+      setLocalStorageData(sheetName, updated);
+      return true;
+    }
   }
 };

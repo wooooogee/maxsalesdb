@@ -113,6 +113,35 @@ function doPost(e) {
     }
     return ContentService.createTextOutput(JSON.stringify({error: "ID not found: " + targetId}))
       .setMimeType(ContentService.MimeType.JSON);
+  } else if (action === "delete") {
+    var idColIndex = headers.indexOf("id");
+    if (idColIndex === -1) idColIndex = headers.indexOf("ID");
+    
+    if (idColIndex === -1) {
+      return ContentService.createTextOutput(JSON.stringify({error: "id column not found in sheet"}))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    var data = sheet.getDataRange().getValues();
+    var targetId = params.id;
+
+    if (targetId === undefined || targetId === null) {
+      return ContentService.createTextOutput(JSON.stringify({error: "ID parameter missing"}))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    var targetIdStr = targetId.toString();
+
+    for (var r = 1; r < data.length; r++) {
+      var cellValue = data[r][idColIndex];
+      if (cellValue !== undefined && cellValue !== null && cellValue.toString() === targetIdStr) {
+        sheet.deleteRow(r + 1);
+        return ContentService.createTextOutput(JSON.stringify({success: true}))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+    return ContentService.createTextOutput(JSON.stringify({error: "ID not found: " + targetIdStr}))
+      .setMimeType(ContentService.MimeType.JSON);
   }
 }
 
