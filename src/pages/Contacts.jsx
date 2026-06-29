@@ -139,14 +139,14 @@ const Contacts = () => {
     }
   };
 
-  const handleSearchAddress = async () => {
+  const handleSearchAddress = async (silentError = false) => {
     if (!addressSearch.trim()) {
-      toast.error('검색할 주소를 입력하세요.');
+      if (!silentError) toast.error('검색할 주소를 입력하세요.');
       return;
     }
 
     try {
-      toast.loading('주소 좌표를 검색 중...', { id: 'geo-search' });
+      if (!silentError) toast.loading('주소 좌표를 검색 중...', { id: 'geo-search' });
       const result = await geocodeAddress(addressSearch);
       
       setFormData(prev => ({
@@ -158,7 +158,8 @@ const Contacts = () => {
         longitude: result.longitude.toString()
       }));
 
-      toast.success('주소를 찾았습니다.', { id: 'geo-search' });
+      if (!silentError) toast.success('주소를 찾았습니다.', { id: 'geo-search' });
+      else toast.dismiss('geo-search');
 
       // Update map position
       if (miniMapObj.current && markerObj.current && window.naver) {
@@ -168,7 +169,9 @@ const Contacts = () => {
         markerObj.current.setVisible(true);
       }
     } catch (err) {
-      toast.error(err.message || '주소 검색에 실패했습니다.', { id: 'geo-search' });
+      if (!silentError) toast.error(err.message || '주소 검색에 실패했습니다.', { id: 'geo-search' });
+      else toast.dismiss('geo-search');
+      
       // Fallback: manually fill mock coords or allow manual typing
       setFormData(prev => ({
         ...prev,
@@ -581,15 +584,31 @@ const Contacts = () => {
 
               {/* Address Search & Map preview */}
               <div className="address-search-group">
-                <label>주소 검색 (네이버 지도 연동)</label>
+                <label>지도 검색 (주소 또는 상호명)</label>
                 <div className="address-input-wrapper">
                   <input 
                     type="text" 
-                    placeholder="도로명 또는 지번 주소 입력..." 
+                    placeholder="도로명, 지번 주소 또는 상호명 입력..." 
                     value={addressSearch}
                     onChange={(e) => setAddressSearch(e.target.value)}
                   />
-                  <button type="button" className="btn-secondary" onClick={handleSearchAddress}>검색</button>
+                  <button 
+                    type="button" 
+                    className="btn-primary" 
+                    style={{ padding: '0 1rem', whiteSpace: 'nowrap', backgroundColor: '#2d60ff', border: 'none' }} 
+                    onClick={() => {
+                      if (!addressSearch.trim()) {
+                        toast.error('검색할 상호명이나 주소를 입력하세요.');
+                        return;
+                      }
+                      // 네이버 지도 앱/웹으로 이동
+                      window.open(`https://map.naver.com/v5/search/${encodeURIComponent(addressSearch)}`, '_blank');
+                      // 내부 미니맵 마커 표시를 위한 지오코딩 시도 (주소일 경우만 성공)
+                      handleSearchAddress(true);
+                    }}
+                  >
+                    지도 검색
+                  </button>
                 </div>
                 {formData.address && (
                   <div style={{ fontSize: '0.8rem', color: 'var(--success-color)', fontWeight: 500 }}>

@@ -21,15 +21,19 @@ import {
   ChevronLeft, 
   ChevronRight, 
   MessageSquare,
-  Award
+  Award,
+  MapPin,
+  Building
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './Dashboard.css';
 import { parseKoreanDateTime } from '../dateUtils';
 import { useUser } from '../UserContext';
+import { useNavigate } from 'react-router-dom';
 
 const Dashboard = () => {
   const { user, changeUser } = useUser();
+  const navigate = useNavigate();
   const [clients, setClients] = useState([]);
   const [meetings, setMeetings] = useState([]);
   const [interactions, setInteractions] = useState([]);
@@ -50,6 +54,11 @@ const Dashboard = () => {
   const [isAddingMeeting, setIsAddingMeeting] = useState(false);
   const [routeSelectedIds, setRouteSelectedIds] = useState([]);
   const [optimizedOrder, setOptimizedOrder] = useState([]);
+  const [draggedRouteId, setDraggedRouteId] = useState(null);
+  
+  const [editMeetingId, setEditMeetingId] = useState(null);
+  const [deleteTargetId, setDeleteTargetId] = useState(null);
+  const [deletePassword, setDeletePassword] = useState('');
 
   const handleDirectAddMeeting = async (e) => {
     e.preventDefault();
@@ -83,7 +92,7 @@ const Dashboard = () => {
 
     try {
       setIsAddingMeeting(true);
-      toast.loading('일정을 등록하는 중...', { id: 'direct-add' });
+      toast.loading(editMeetingId ? '일정을 수정하는 중...' : '일정을 등록하는 중...', { id: 'direct-add' });
 
       const finalType = newMeetType === '직접입력' ? newMeetCustomType : newMeetType;
 
@@ -92,24 +101,85 @@ const Dashboard = () => {
         client_name: clientName,
         date: parsedDateStr,
         type: finalType || '미팅',
-        result: '진행 예정 (직접 등록)'
       };
 
-      const saved = await sheetsClient.insert('meetings', meetingData);
-      setMeetings(prev => [...prev, saved]);
-      
-      toast.success('일정이 직접 등록되었습니다.', { id: 'direct-add' });
+      if (editMeetingId) {
+        meetingData.id = editMeetingId;
+        await sheetsClient.update('meetings', meetingData);
+        setMeetings(prev => {
+          const next = prev.map(m => m.id === editMeetingId ? { ...m, ...meetingData } : m);
+          localStorage.setItem('sheet_v3_meetings', JSON.stringify(next));
+          return next;
+        });
+        toast.success('일정이 수정되었습니다.', { id: 'direct-add' });
+      } else {
+        meetingData.result = '진행 예정 (직접 등록)';
+        const saved = await sheetsClient.insert('meetings', meetingData);
+        setMeetings(prev => {
+          const next = [...prev, saved];
+          localStorage.setItem('sheet_v3_meetings', JSON.stringify(next));
+          return next;
+        });
+        toast.success('일정이 직접 등록되었습니다.', { id: 'direct-add' });
+      }
       
       // Reset form
       setNewMeetClient('');
       setNewMeetTime('10:00');
       setNewMeetType('브리핑');
       setNewMeetCustomType('');
+      setEditMeetingId(null);
       setShowAddForm(false);
     } catch (err) {
-      toast.error('일정 등록 실패: ' + err.message, { id: 'direct-add' });
+      toast.error('일정 처리 실패: ' + err.message, { id: 'direct-add' });
     } finally {
       setIsAddingMeeting(false);
+    }
+  };
+
+  const handleEditScheduleClick = (meet) => {
+    try {
+      setEditMeetingId(meet.id);
+      setNewMeetClient(meet.client_id);
+      const dateObj = parseISO(meet.date);
+      setSelectedDate(dateObj);
+      setNewMeetTime(format(dateObj, 'HH:mm'));
+      
+      if (['브리핑', '인사', '계약', '서류전달', '기타'].includes(meet.type)) {
+        setNewMeetType(meet.type);
+        setNewMeetCustomType('');
+      } else {
+        setNewMeetType('직접입력');
+        setNewMeetCustomType(meet.type);
+      }
+      setShowAddForm(true);
+      // scroll to top smoothly
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (e) {
+      toast.error('일정 데이터를 불러오는데 실패했습니다.');
+    }
+  };
+
+  const handleDeleteMeeting = async () => {
+    if (deletePassword !== '0805') {
+      toast.error('비밀번호가 일치하지 않습니다.');
+      return;
+    }
+    try {
+      toast.loading('일정을 삭제하는 중...', { id: 'delete-meeting' });
+      await sheetsClient.delete('meetings', { id: deleteTargetId, sheet: 'meetings' });
+      
+      setMeetings(prev => {
+        const next = prev.filter(m => m.id !== deleteTargetId);
+        localStorage.setItem('sheet_v3_meetings', JSON.stringify(next));
+        return next;
+      });
+      
+      toast.success('일정이 삭제되었습니다.', { id: 'delete-meeting' });
+      setDeleteTargetId(null);
+      setDeletePassword('');
+    } catch (err) {
+      toast.error('일정 삭제 실패: ' + err.message, { id: 'delete-meeting' });
     }
   };
 
@@ -308,27 +378,65 @@ const Dashboard = () => {
     toast.success('AI가 가장 효율적인 방문 동선을 계산했습니다!');
   };
 
+  const handleDragStart = (e, id) => {
+    if (!routeSelectedIds.includes(id)) {
+      e.preventDefault();
+      return;
+    }
+    setDraggedRouteId(id);
+    e.dataTransfer.setData('text/plain', id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e, targetId) => {
+    e.preventDefault(); // necessary to allow dropping
+    if (!draggedRouteId || draggedRouteId === targetId) return;
+    if (!routeSelectedIds.includes(targetId)) return;
+    
+    const draggedIdx = routeSelectedIds.indexOf(draggedRouteId);
+    const targetIdx = routeSelectedIds.indexOf(targetId);
+    
+    const newRoute = [...routeSelectedIds];
+    newRoute.splice(draggedIdx, 1);
+    newRoute.splice(targetIdx, 0, draggedRouteId);
+    
+    setRouteSelectedIds(newRoute);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedRouteId(null);
+  };
+
   const handleOpenNaverDirections = () => {
     const orderedMeetings = routeSelectedIds
       .map(id => visitMeetings.find(m => m.id === id))
       .filter(Boolean);
 
-    const addresses = orderedMeetings.map(m => {
-      const client = getClientContact(m.client_id);
-      return client ? client.address : '';
-    }).filter(Boolean);
-
-    if (addresses.length === 0) {
+    if (orderedMeetings.length === 0) {
       toast.error('길찾기를 실행할 장소를 체크해 주세요.');
       return;
     }
 
-    if (addresses.length === 1) {
-      const url = `https://map.naver.com/v5/search/${encodeURIComponent(addresses[0])}`;
+    if (orderedMeetings.length === 1) {
+      const client = getClientContact(orderedMeetings[0].client_id);
+      const url = `https://map.naver.com/p/search/${encodeURIComponent(client.address || client.company)}`;
       window.open(url, '_blank');
     } else {
-      const path = addresses.map(addr => encodeURIComponent(addr)).join('/');
-      const url = `https://map.naver.com/v5/dir/${path}/car`;
+      const path = orderedMeetings.map(m => {
+        const client = getClientContact(m.client_id);
+        const name = encodeURIComponent(client.company || client.name || '경유지');
+        const lat = client.latitude;
+        const lng = client.longitude;
+        
+        if (lat && lng) {
+          return `${lng},${lat},${name}`;
+        } else {
+          // 좌표가 없는 경우 대체 텍스트 (완벽히 동작하지 않을 수 있음)
+          return name;
+        }
+      }).join('/');
+      
+      const url = `https://map.naver.com/p/directions/${path}/-/car`;
       window.open(url, '_blank');
     }
   };
@@ -442,10 +550,12 @@ const Dashboard = () => {
           </button>
         </div>
 
-        {/* 직접 등록 Form */}
+        {/* 직접 등록/수정 Form */}
         {showAddForm && (
           <form onSubmit={handleDirectAddMeeting} style={{ padding: '0.75rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', backgroundColor: 'var(--bg-primary)' }}>
-            <h4 style={{ fontSize: '0.85rem', fontWeight: 700, margin: 0 }}>새 미팅 일정 등록</h4>
+            <h4 style={{ fontSize: '0.85rem', fontWeight: 700, margin: 0 }}>
+              {editMeetingId ? '일정 수정' : '새 미팅 일정 등록'}
+            </h4>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
               <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>대상자 선택 *</label>
@@ -502,14 +612,33 @@ const Dashboard = () => {
               </div>
             )}
 
-            <button 
-              type="submit" 
-              className="btn-primary" 
-              style={{ width: '100%', padding: '0.4rem', fontSize: '0.85rem', marginTop: '0.25rem' }}
-              disabled={isAddingMeeting}
-            >
-              일정 등록 완료
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+              <button 
+                type="submit" 
+                className="btn-primary" 
+                style={{ flex: 1, padding: '0.4rem', fontSize: '0.85rem' }}
+                disabled={isAddingMeeting}
+              >
+                {editMeetingId ? '수정 완료' : '일정 등록 완료'}
+              </button>
+              {editMeetingId && (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  style={{ flex: 1, padding: '0.4rem', fontSize: '0.85rem' }}
+                  onClick={() => {
+                    setEditMeetingId(null);
+                    setShowAddForm(false);
+                    setNewMeetClient('');
+                    setNewMeetTime('10:00');
+                    setNewMeetType('브리핑');
+                    setNewMeetCustomType('');
+                  }}
+                >
+                  취소
+                </button>
+              )}
+            </div>
           </form>
         )}
         
@@ -550,6 +679,16 @@ const Dashboard = () => {
                           <MessageSquare size={12} /> 문자
                         </a>
                       )}
+                      {client.address && (
+                        <a href={`https://map.naver.com/v5/search/${encodeURIComponent(client.address)}`} target="_blank" rel="noopener noreferrer" className="btn-secondary btn-schedule-action" style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', backgroundColor: '#03c75a', color: 'white', border: 'none' }}>
+                          <MapPin size={12} /> 주소
+                        </a>
+                      )}
+                      {(client.company || meet.client_name) && (
+                        <a href={`https://map.naver.com/v5/search/${encodeURIComponent(client.company || meet.client_name)}`} target="_blank" rel="noopener noreferrer" className="btn-secondary btn-schedule-action" style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', backgroundColor: '#2d60ff', color: 'white', border: 'none' }}>
+                          <Building size={12} /> 상호
+                        </a>
+                      )}
                     </div>
                   )}
 
@@ -566,16 +705,31 @@ const Dashboard = () => {
                         <button className="btn-secondary" onClick={() => setEditingMeetingId(null)}>취소</button>
                       </div>
                     ) : (
-                      <button 
-                        className="btn-secondary" 
-                        style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
-                        onClick={() => {
-                          setEditingMeetingId(meet.id);
-                          setMeetingResult(meet.result || '');
-                        }}
-                      >
-                        결과 수정/입력
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        <button 
+                          className="btn-primary" 
+                          style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}
+                          onClick={() => {
+                            navigate('/meetings', { state: { selectedContactId: meet.client_id } });
+                          }}
+                        >
+                          미팅 내용 입력
+                        </button>
+                        <button 
+                          className="btn-secondary" 
+                          style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', color: 'var(--text-primary)' }}
+                          onClick={() => handleEditScheduleClick(meet)}
+                        >
+                          일정 수정
+                        </button>
+                        <button 
+                          className="btn-secondary" 
+                          style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', color: '#dc2626' }}
+                          onClick={() => setDeleteTargetId(meet.id)}
+                        >
+                          삭제
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -594,7 +748,7 @@ const Dashboard = () => {
         <div className="schedule-section" style={{ border: '1px solid var(--border-color)', padding: '1.25rem', borderRadius: 'var(--radius-lg)', backgroundColor: 'var(--bg-secondary)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
             <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-              🚗 AI 동선 최적화 및 길찾기
+              🚗 AI 동선 최적화
             </h3>
             {visitMeetings.length > 1 && (
               <button 
@@ -603,25 +757,35 @@ const Dashboard = () => {
                 onClick={optimizeRoute}
                 style={{ fontSize: '0.75rem', padding: '0.35rem 0.7rem', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--accent-color)', color: 'var(--accent-color)', borderRadius: 'var(--radius-md)', fontWeight: 600 }}
               >
-                🤖 AI 최적 동선 추천
+                🤖 AI 추천 동선
               </button>
             )}
           </div>
 
           <div>
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.75rem', lineHeight: '1.4' }}>
-              방문할 장소들을 체크한 뒤 네이버 지도로 연동하여 길찾기를 실행합니다. AI 추천 버튼 클릭 시 가장 가까운 순서로 동선이 최적화됩니다.
-            </p>
-
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
-              {visitMeetings.map((meet, idx) => {
-                const client = getClientContact(meet.client_id);
-                const isChecked = routeSelectedIds.includes(meet.id);
-                const orderIndex = routeSelectedIds.indexOf(meet.id);
+              {(() => {
+                // 선택된 항목들이 위로, 순서대로 오도록 정렬
+                const sortedMeetings = [...visitMeetings].sort((a, b) => {
+                  const idxA = routeSelectedIds.indexOf(a.id);
+                  const idxB = routeSelectedIds.indexOf(b.id);
+                  if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                  if (idxA !== -1) return -1;
+                  if (idxB !== -1) return 1;
+                  return 0;
+                });
+                return sortedMeetings.map((meet, idx) => {
+                  const client = getClientContact(meet.client_id);
+                  const isChecked = routeSelectedIds.includes(meet.id);
+                  const orderIndex = routeSelectedIds.indexOf(meet.id);
 
                 return (
                   <div 
                     key={meet.id} 
+                    draggable={isChecked}
+                    onDragStart={(e) => handleDragStart(e, meet.id)}
+                    onDragOver={(e) => handleDragOver(e, meet.id)}
+                    onDragEnd={handleDragEnd}
                     onClick={() => handleRouteCheckboxChange(meet.id)}
                     style={{ 
                       display: 'flex', 
@@ -631,8 +795,9 @@ const Dashboard = () => {
                       backgroundColor: isChecked ? 'var(--bg-primary)' : 'var(--bg-secondary)', 
                       border: `1px solid ${isChecked ? 'var(--accent-color)' : 'var(--border-color)'}`, 
                       borderRadius: 'var(--radius-md)',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
+                      cursor: isChecked ? 'grab' : 'pointer',
+                      opacity: draggedRouteId === meet.id ? 0.5 : 1,
+                      transition: 'background-color 0.2s, border-color 0.2s'
                     }}
                   >
                     <input 
@@ -672,7 +837,8 @@ const Dashboard = () => {
                     )}
                   </div>
                 );
-              })}
+                });
+              })()}
             </div>
 
             <button 
@@ -682,7 +848,7 @@ const Dashboard = () => {
               disabled={routeSelectedIds.length === 0}
               style={{ width: '100%', padding: '0.7rem', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
             >
-              🚗 선택된 동선으로 네이버 길찾기 시작 ({routeSelectedIds.length}곳)
+              🚗 네이버 길찾기 시작
             </button>
           </div>
         </div>
@@ -706,6 +872,31 @@ const Dashboard = () => {
           <div className="stat-label" style={{ fontSize: '0.7rem' }}>이번 달 미팅</div>
         </div>
       </div>
+
+      {/* Password Modal for Deletion */}
+      {deleteTargetId && (
+        <div className="modal-overlay" style={{ zIndex: 9999, alignItems: 'center', paddingBottom: 0 }}>
+          <div style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: 'var(--radius-lg)', padding: '2rem 1.5rem', width: '90%', maxWidth: '320px', textAlign: 'center', boxShadow: 'var(--shadow-lg)' }}>
+            <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem' }}>삭제 비밀번호 확인</h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
+              일정을 삭제하시려면 비밀번호를 입력하세요.
+            </p>
+            <input 
+              type="password" 
+              value={deletePassword}
+              onChange={(e) => setDeletePassword(e.target.value)}
+              placeholder="비밀번호 입력"
+              style={{ width: '100%', padding: '0.75rem', marginBottom: '1.5rem', textAlign: 'center', letterSpacing: '0.2em' }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button className="btn-secondary" style={{ flex: 1 }} onClick={() => { setDeleteTargetId(null); setDeletePassword(''); }}>취소</button>
+              <button className="btn-primary" style={{ flex: 1, backgroundColor: '#ef4444' }} onClick={handleDeleteMeeting}>확인</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

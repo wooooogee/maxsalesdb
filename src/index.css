@@ -28,6 +28,8 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  /* Prevent random blinking cursors on iOS/mobile when tapping non-inputs */
+  caret-color: transparent;
 }
 
 body {
@@ -58,13 +60,14 @@ button {
   transition: all 0.2s ease;
 }
 
-input, textarea, select {
+input, textarea, select, [contenteditable="true"] {
   font-family: inherit;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: 0.5rem 0.75rem;
   outline: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  caret-color: auto; /* 진짜 입력창은 커서 보이게 복구 */
 }
 
 input:focus, textarea:focus, select:focus {
