@@ -48,6 +48,9 @@ const MeetingLog = () => {
   
   // Tab & List states
   const [activeTab, setActiveTab] = useState('write'); // write, list
+  const [contactQueue, setContactQueue] = useState([]);
+  const [currentQueueIndex, setCurrentQueueIndex] = useState(0);
+  const [multiLogs, setMultiLogs] = useState([]);
   const [interactions, setInteractions] = useState([]);
   const [loadingInteractions, setLoadingInteractions] = useState(false);
   const [expandedInteractionId, setExpandedInteractionId] = useState(null);
@@ -63,7 +66,7 @@ const MeetingLog = () => {
   });
 
   // Form State: 1) 소통방식
-  const [contactType, setContactType] = useState('전화'); // 전화, 방문, 이메일, 팩스
+  const [contactType, setContactType] = useState(location.state?.defaultContactType || '전화'); // 전화, 방문, 이메일, 팩스
 
   // Form State: 2) 이메일/팩스인 경우 자료 전달 결과
   const [materialSent, setMaterialSent] = useState('');
@@ -114,19 +117,6 @@ const MeetingLog = () => {
   const audioChunksRef = useRef([]);
   const timerIntervalRef = useRef(null);
 
-  useEffect(() => {
-    fetchContacts();
-    return () => {
-      clearInterval(timerIntervalRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (location.state?.selectedContactId) {
-      setSelectedContactId(location.state.selectedContactId);
-    }
-  }, [location.state]);
-
   const fetchContacts = async () => {
     try {
       const cached = localStorage.getItem('sheet_v3_clients');
@@ -141,6 +131,132 @@ const MeetingLog = () => {
     } catch (error) {
       console.log('Contacts load failed.', error.message);
     }
+  };
+
+  useEffect(() => {
+    fetchContacts();
+    return () => {
+      clearInterval(timerIntervalRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (location.state?.selectedContactIds && location.state.selectedContactIds.length > 0) {
+      const ids = location.state.selectedContactIds;
+      setContactQueue(ids);
+      setCurrentQueueIndex(0);
+      setSelectedContactId(ids[0]);
+      
+      const initialLogs = ids.map(id => ({
+        contactId: id, content: '', summary: '', contactType: location.state?.defaultContactType || '전화', materialSent: '', hasNextMeeting: false,
+        nextMeetingDateOnly: getLocalDateString(), nextMeetingTimeOnly: '10:00', nextMeetingType: '브리핑', customMeetingType: '',
+        audioBlob: null, audioUrl: '', uploadedFile: null,
+      }));
+      setMultiLogs(initialLogs);
+    } else if (location.state?.selectedContactId) {
+      setSelectedContactId(location.state.selectedContactId);
+      setContactQueue([]);
+    }
+  }, [location.state]);
+
+  const saveCurrentToLogs = () => {
+    const newLogs = [...multiLogs];
+    newLogs[currentQueueIndex] = {
+      contactId: selectedContactId, content, summary, contactType, materialSent, hasNextMeeting,
+      nextMeetingDateOnly, nextMeetingTimeOnly, nextMeetingType, customMeetingType, audioBlob, audioUrl, uploadedFile,
+    };
+    return newLogs;
+  };
+
+  const loadFormFromMultiLogs = (index, logs) => {
+    const log = logs[index];
+    if (!log) return;
+    setSelectedContactId(log.contactId);
+    setContent(log.content);
+    setSummary(log.summary);
+    setContactType(log.contactType);
+    setMaterialSent(log.materialSent);
+    setHasNextMeeting(log.hasNextMeeting);
+    setNextMeetingDateOnly(log.nextMeetingDateOnly);
+    setNextMeetingTimeOnly(log.nextMeetingTimeOnly);
+    setNextMeetingType(log.nextMeetingType);
+    setCustomMeetingType(log.customMeetingType);
+    setAudioBlob(log.audioBlob);
+    setAudioUrl(log.audioUrl);
+    setUploadedFile(log.uploadedFile);
+  };
+
+  const handlePrevContact = () => {
+    if (contactQueue.length === 0) return;
+    const newLogs = saveCurrentToLogs();
+    setMultiLogs(newLogs);
+    const newIndex = currentQueueIndex - 1;
+    setCurrentQueueIndex(newIndex);
+    loadFormFromMultiLogs(newIndex, newLogs);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleNextContact = () => {
+    if (contactQueue.length === 0) return;
+    const newLogs = saveCurrentToLogs();
+    setMultiLogs(newLogs);
+    const newIndex = currentQueueIndex + 1;
+    setCurrentQueueIndex(newIndex);
+    loadFormFromMultiLogs(newIndex, newLogs);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleBatchSave = async () => {
+    if (!user) return toast.error('사용자를 먼저 선택해 주세요.');
+    
+    const finalLogs = [...multiLogs];
+    finalLogs[currentQueueIndex] = {
+      contactId: selectedContactId, content, summary, contactType, materialSent, hasNextMeeting,
+      nextMeetingDateOnly, nextMeetingTimeOnly, nextMeetingType, customMeetingType, audioBlob, audioUrl, uploadedFile,
+    };
+    setMultiLogs(finalLogs);
+
+    toast.loading('다중 기록을 순차적으로 저장하는 중...', { id: 'batch-save' });
+
+    for (let i = 0; i < finalLogs.length; i++) {
+      const log = finalLogs[i];
+      if (!log.contactId) continue;
+      if (!log.content.trim() && !log.summary.trim()) continue;
+
+      const client = contacts.find(c => c.id === log.contactId);
+      const clientName = client ? `${client.company} - ${client.name}` : '알 수 없음';
+      
+      const parsedMeetingDate = log.hasNextMeeting && log.nextMeetingDateOnly ? parseKoreanDateTime(`${log.nextMeetingDateOnly} ${log.nextMeetingTimeOnly}`) : '';
+      
+      const tempId = 'temp_' + Date.now() + '_' + i;
+      const interactionData = {
+        id: tempId, client_id: log.contactId, client_name: clientName, date: new Date().toISOString().substring(0, 16).replace('T', ' '),
+        type: log.contactType, summary: log.summary || log.content, content: log.content, attachments: '', next_meeting_date: parsedMeetingDate, creator: user
+      };
+
+      try {
+        await sheetsClient.insert('interactions', interactionData);
+        
+        if (log.hasNextMeeting) {
+          const finalMeetingType = log.nextMeetingType === '직접입력' ? log.customMeetingType : log.nextMeetingType;
+          const meetingData = {
+            id: 'temp_meet_' + Date.now() + '_' + i, client_id: log.contactId, client_name: clientName, date: parsedMeetingDate,
+            type: finalMeetingType || '미팅', result: '진행 예정 (준비 단계)', creator: user
+          };
+          await sheetsClient.insert('schedules', meetingData);
+        }
+      } catch (err) {
+        console.error('Batch insert err:', err);
+      }
+    }
+    
+    toast.success('다중 기록 저장이 완료되었습니다!', { id: 'batch-save' });
+    setContactQueue([]);
+    setMultiLogs([]);
+    setContent('');
+    setSummary('');
+    setActiveTab('list');
+    fetchInteractions();
   };
 
   const handleQuickClientSubmit = async (e) => {
@@ -545,6 +661,12 @@ const MeetingLog = () => {
   return (
     <div className="card meeting-log-page" style={{ paddingBottom: '3rem' }}>
       <h2 style={{ marginBottom: '1.25rem', fontSize: '1.3rem', fontWeight: 700 }}>상담 기록 작성</h2>
+      {contactQueue.length > 1 && (
+        <div style={{ backgroundColor: 'var(--bg-secondary)', padding: '0.8rem 1rem', borderRadius: 'var(--radius-md)', marginBottom: '1rem', borderLeft: '4px solid var(--accent-color)', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>다중 기록 작성 중 ({currentQueueIndex + 1} / {contactQueue.length})</span>
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>순차적으로 기기에 임시 저장됩니다.</span>
+        </div>
+      )}
       
       {/* 1. Target Selection */}
       <div className="form-group" style={{ marginBottom: '1.25rem', position: 'relative' }}>
@@ -994,9 +1116,42 @@ const MeetingLog = () => {
         borderTop: '1px solid var(--border-color)',
         zIndex: 10
       }}>
-        <button type="button" className="btn-primary" onClick={handleSave} style={{ width: '100%', padding: '0.85rem', fontSize: '1.05rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }}>
-          <Save size={18} /> 저장하기
-        </button>
+        {contactQueue.length > 1 ? (
+          <div style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
+            <button 
+              type="button"
+              className="btn-secondary" 
+              onClick={handlePrevContact}
+              disabled={currentQueueIndex === 0}
+              style={{ flex: 1, padding: '1rem' }}
+            >
+              이전 대상자
+            </button>
+            {currentQueueIndex < contactQueue.length - 1 ? (
+              <button 
+                type="button"
+                className="btn-primary" 
+                onClick={handleNextContact}
+                style={{ flex: 1, padding: '1rem', backgroundColor: 'var(--accent-color)', border: 'none', color: 'white' }}
+              >
+                다음 대상자
+              </button>
+            ) : (
+              <button 
+                type="button"
+                className="btn-primary" 
+                onClick={handleBatchSave}
+                style={{ flex: 1, padding: '1rem', backgroundColor: '#4caf50', border: 'none', color: 'white' }}
+              >
+                <Save size={18} style={{ marginRight: '0.5rem' }} /> 일괄 저장하기
+              </button>
+            )}
+          </div>
+        ) : (
+          <button type="button" className="btn-primary" onClick={handleSave} style={{ width: '100%', padding: '0.85rem', fontSize: '1.05rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }}>
+            <Save size={18} /> 저장하기
+          </button>
+        )}
       </div>
 
       {/* Quick New Client Modal (상담기록 탭 전용 신규등록 모달) */}

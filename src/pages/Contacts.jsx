@@ -29,6 +29,8 @@ const Contacts = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expandedContactId, setExpandedContactId] = useState(null);
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+  const [selectedContactIds, setSelectedContactIds] = useState([]);
   
   // Custom delete modal states
   const [deleteTargetId, setDeleteTargetId] = useState(null);
@@ -208,6 +210,12 @@ const Contacts = () => {
     }
   };
 
+  const handleToggleSelect = React.useCallback((id) => {
+    setSelectedContactIds(prev => 
+      prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
+    );
+  }, []);
+
   // Filter & Search Logic
   const filteredContacts = React.useMemo(() => {
     return contacts.filter(contact => {
@@ -226,12 +234,19 @@ const Contacts = () => {
   const renderedContacts = React.useMemo(() => {
     return filteredContacts.map(contact => {
       const isExpanded = expandedContactId === contact.id;
+      const isSelected = selectedContactIds.includes(contact.id);
       return (
         <div 
           key={contact.id} 
           className={`contact-card ${isExpanded ? 'expanded' : 'collapsed'}`}
-          style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column' }}
-          onClick={() => setExpandedContactId(isExpanded ? null : contact.id)}
+          style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', border: isSelected ? '2px solid var(--accent-color)' : '' }}
+          onClick={() => {
+            if (isMultiSelectMode) {
+              handleToggleSelect(contact.id);
+            } else {
+              setExpandedContactId(isExpanded ? null : contact.id);
+            }
+          }}
         >
           {/* 카드 헤더 (항상 노출) */}
           <div 
@@ -245,6 +260,15 @@ const Contacts = () => {
             }}
           >
             <div className="contact-company" style={{ fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+              {isMultiSelectMode && (
+                <input 
+                  type="checkbox" 
+                  checked={isSelected}
+                  onChange={() => handleToggleSelect(contact.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ width: '16px', height: '16px', accentColor: 'var(--accent-color)', marginRight: '0.3rem' }}
+                />
+              )}
               <Building size={15} style={{ color: 'var(--accent-color)', flexShrink: 0 }}/> 
               <span style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
                 {contact.company}
@@ -391,26 +415,37 @@ const Contacts = () => {
         </div>
       );
     });
-  }, [filteredContacts, expandedContactId, navigate, handleStartEdit]);
+  }, [filteredContacts, expandedContactId, navigate, handleStartEdit, isMultiSelectMode, selectedContactIds, handleToggleSelect]);
 
   return (
     <div className="contacts-page">
-      {/* Header */}
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'nowrap', marginBottom: '0.5rem' }}>
         <h2 className="page-title" style={{ margin: 0, whiteSpace: 'nowrap', fontSize: '1.4rem' }}>대상자 관리</h2>
-        <button 
-          className="btn-primary" 
-          onClick={() => {
-            setFormData({
-              company: '', title: '', name: '', recommender: '', phone: '', email: '', fax: '',
-              address: '', city: '', district: '', latitude: '', longitude: ''
-            });
-            setIsModalOpen(true);
-          }}
-          style={{ whiteSpace: 'nowrap', padding: '0.4rem 0.6rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.2rem', flexShrink: 0 }}
-        >
-          <Plus size={14} /> 새 대상자 등록
-        </button>
+        <div style={{ display: 'flex', gap: '0.4rem' }}>
+          <button 
+            className={`btn-secondary ${isMultiSelectMode ? 'active' : ''}`}
+            onClick={() => {
+              setIsMultiSelectMode(!isMultiSelectMode);
+              if (isMultiSelectMode) setSelectedContactIds([]); // 끄면 선택 초기화
+            }}
+            style={{ whiteSpace: 'nowrap', padding: '0.4rem 0.6rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.2rem', backgroundColor: isMultiSelectMode ? 'var(--accent-color)' : 'var(--bg-secondary)', color: isMultiSelectMode ? 'white' : 'var(--text-primary)', border: isMultiSelectMode ? 'none' : '1px solid var(--border-color)' }}
+          >
+            다중 기록
+          </button>
+          <button 
+            className="btn-primary" 
+            onClick={() => {
+              setFormData({
+                company: '', title: '', name: '', recommender: '', phone: '', email: '', fax: '',
+                address: '', city: '', district: '', latitude: '', longitude: ''
+              });
+              setIsModalOpen(true);
+            }}
+            style={{ whiteSpace: 'nowrap', padding: '0.4rem 0.6rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.2rem', flexShrink: 0 }}
+          >
+            <Plus size={14} /> 새 대상자 등록
+          </button>
+        </div>
       </div>
 
       {/* Filter Options */}
@@ -474,7 +509,20 @@ const Contacts = () => {
         )}
       </div>
 
-      {/* New Client Modal */}
+      {/* Floating Action Button for Multi-select */}
+      {isMultiSelectMode && selectedContactIds.length > 0 && (
+        <div style={{
+          position: 'fixed', bottom: '20px', left: '50%', transform: 'translateX(-50%)',
+          backgroundColor: 'var(--accent-color)', color: 'white', padding: '0.8rem 1.5rem',
+          borderRadius: '30px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 1000,
+          display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontWeight: 600
+        }}
+        onClick={() => navigate('/meetings', { state: { selectedContactIds } })}
+        >
+          <Calendar size={18} />
+          {selectedContactIds.length}명 상담 기록 쓰기
+        </div>
+      )}      {/* New Client Modal */}
       {isModalOpen && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '550px', maxHeight: '90vh', overflowY: 'auto' }}>

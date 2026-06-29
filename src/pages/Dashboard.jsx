@@ -723,7 +723,7 @@ const Dashboard = () => {
                           className="btn-primary" 
                           style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}
                           onClick={() => {
-                            navigate('/meetings', { state: { selectedContactId: meet.client_id } });
+                            navigate('/meetings', { state: { selectedContactId: meet.client_id, defaultContactType: '방문' } });
                           }}
                         >
                           미팅 내용 입력
