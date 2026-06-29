@@ -17,7 +17,7 @@ const Layout = () => {
       {/* Desktop Sidebar */}
       <aside className="sidebar">
         <div className="sidebar-header">
-          <h2>MeetingLog</h2>
+          <h2>맥스세일즈</h2>
         </div>
         <nav className="sidebar-nav">
           {navLinks.map(link => (
