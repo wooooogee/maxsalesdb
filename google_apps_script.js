@@ -6,7 +6,7 @@ function doGet(e) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
-    return ContentService.createTextOutput(JSON.stringify({error: "Sheet not found: " + sheetName}))
+    return ContentService.createTextOutput(JSON.stringify([]))
       .setMimeType(ContentService.MimeType.JSON);
   }
   

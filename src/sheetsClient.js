@@ -819,7 +819,7 @@ export const sheetsClient = {
           method: 'POST',
           mode: 'cors',
           headers: {
-            'Content-Type': 'application/json',
+            'Content-Type': 'text/plain',
           },
           body: JSON.stringify({
             sheet: sheetName,
@@ -856,7 +856,7 @@ export const sheetsClient = {
           method: 'POST',
           mode: 'cors',
           headers: {
-            'Content-Type': 'application/json',
+            'Content-Type': 'text/plain',
           },
           body: JSON.stringify({
             sheet: sheetName,
