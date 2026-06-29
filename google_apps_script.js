@@ -7,15 +7,13 @@ function doGet(e) {
   var sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
     return ContentService.createTextOutput(JSON.stringify({error: "Sheet not found: " + sheetName}))
-      .setMimeType(ContentService.MimeType.JSON)
-      .setHeader("Access-Control-Allow-Origin", "*");
+      .setMimeType(ContentService.MimeType.JSON);
   }
   
   var data = sheet.getDataRange().getValues();
   if (data.length <= 1) {
     return ContentService.createTextOutput(JSON.stringify([]))
-      .setMimeType(ContentService.MimeType.JSON)
-      .setHeader("Access-Control-Allow-Origin", "*");
+      .setMimeType(ContentService.MimeType.JSON);
   }
   
   var headers = data[0];
@@ -28,8 +26,7 @@ function doGet(e) {
     rows.push(row);
   }
   return ContentService.createTextOutput(JSON.stringify(rows))
-    .setMimeType(ContentService.MimeType.JSON)
-    .setHeader("Access-Control-Allow-Origin", "*");
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function doPost(e) {
@@ -55,16 +52,14 @@ function doPost(e) {
     }
     sheet.appendRow(newRow);
     return ContentService.createTextOutput(JSON.stringify({success: true, data: params.data}))
-      .setMimeType(ContentService.MimeType.JSON)
-      .setHeader("Access-Control-Allow-Origin", "*");
+      .setMimeType(ContentService.MimeType.JSON);
   } else if (action === "update") {
     var idColIndex = headers.indexOf("id");
     if (idColIndex === -1) idColIndex = headers.indexOf("ID");
     
     if (idColIndex === -1) {
       return ContentService.createTextOutput(JSON.stringify({error: "id column not found in sheet"}))
-        .setMimeType(ContentService.MimeType.JSON)
-        .setHeader("Access-Control-Allow-Origin", "*");
+        .setMimeType(ContentService.MimeType.JSON);
     }
     
     var data = sheet.getDataRange().getValues();
@@ -78,21 +73,16 @@ function doPost(e) {
           }
         }
         return ContentService.createTextOutput(JSON.stringify({success: true}))
-          .setMimeType(ContentService.MimeType.JSON)
-          .setHeader("Access-Control-Allow-Origin", "*");
+          .setMimeType(ContentService.MimeType.JSON);
       }
     }
     return ContentService.createTextOutput(JSON.stringify({error: "ID not found: " + targetId}))
-      .setMimeType(ContentService.MimeType.JSON)
-      .setHeader("Access-Control-Allow-Origin", "*");
+      .setMimeType(ContentService.MimeType.JSON);
   }
 }
 
 // CORS 대응을 위한 OPTIONS 요청 처리
 function doOptions(e) {
   return ContentService.createTextOutput("")
-    .setMimeType(ContentService.MimeType.TEXT)
-    .setHeader("Access-Control-Allow-Origin", "*")
-    .setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-    .setHeader("Access-Control-Allow-Headers", "Content-Type");
+    .setMimeType(ContentService.MimeType.TEXT);
 }
