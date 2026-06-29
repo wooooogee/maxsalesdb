@@ -664,9 +664,14 @@ const Dashboard = () => {
                     {meet.client_name || '알 수 없는 대상'}
                   </div>
                   
-                  <div className="schedule-result">
-                    <strong>결과:</strong> {meet.result || '결과 입력 대기 중'}
-                  </div>
+                  {client && client.address && (
+                    <div className="schedule-address" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.4rem', marginBottom: '0.6rem', display: 'flex', alignItems: 'flex-start', gap: '0.3rem', lineHeight: '1.4' }}>
+                      <MapPin size={12} style={{ flexShrink: 0, marginTop: '0.2rem' }} />
+                      <span style={{ wordBreak: 'keep-all', overflowWrap: 'break-word' }}>
+                        {client.address}
+                      </span>
+                    </div>
+                  )}
 
                   {client && (
                     <div className="schedule-actions">

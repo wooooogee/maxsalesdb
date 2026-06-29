@@ -140,20 +140,37 @@ const Chat = () => {
       if (isSupabaseConfigured()) {
         const { data, error } = await supabase.from('chat_messages').select('*').order('created_at', { ascending: true });
         if (error) throw error;
-        setMessages(data || []);
+        setMessages(prev => {
+          const tempMessages = prev.filter(m => String(m.id).startsWith('temp_'));
+          const remoteData = data || [];
+          const filteredTemp = tempMessages.filter(temp => 
+            !remoteData.some(s => s.text === temp.text && s.user_name === temp.user_name && s.created_at === temp.created_at)
+          );
+          return [...remoteData, ...filteredTemp];
+        });
       } else {
         const data = await sheetsClient.read('chat_messages');
         if (data && data.length > 0) {
           const sorted = data.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
           setMessages(prev => {
-            const isSame = prev.length === sorted.length && JSON.stringify(prev) === JSON.stringify(sorted);
-            return isSame ? prev : sorted;
+            const tempMessages = prev.filter(m => String(m.id).startsWith('temp_'));
+            const filteredTemp = tempMessages.filter(temp => 
+              !sorted.some(s => s.text === temp.text && s.user_name === temp.user_name && s.created_at === temp.created_at)
+            );
+            const next = [...sorted, ...filteredTemp];
+            const isSame = prev.length === next.length && JSON.stringify(prev) === JSON.stringify(next);
+            return isSame ? prev : next;
           });
           localStorage.setItem('sheet_v3_chat_messages', JSON.stringify(sorted));
         } else {
           setMessages(prev => {
-            const isSame = prev.length === MOCK_MESSAGES.length && JSON.stringify(prev) === JSON.stringify(MOCK_MESSAGES);
-            return isSame ? prev : MOCK_MESSAGES;
+            const tempMessages = prev.filter(m => String(m.id).startsWith('temp_'));
+            const filteredTemp = tempMessages.filter(temp => 
+              !MOCK_MESSAGES.some(s => s.text === temp.text && s.user_name === temp.user_name && s.created_at === temp.created_at)
+            );
+            const next = [...MOCK_MESSAGES, ...filteredTemp];
+            const isSame = prev.length === next.length && JSON.stringify(prev) === JSON.stringify(next);
+            return isSame ? prev : next;
           });
           localStorage.setItem('sheet_v3_chat_messages', JSON.stringify(MOCK_MESSAGES));
         }
