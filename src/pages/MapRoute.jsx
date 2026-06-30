@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { sheetsClient } from '../sheetsClient';
 import { ChevronRight, Phone, MapPin, Mail, FileText, Save, Trash2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -9,7 +10,8 @@ const MapRoute = () => {
   const [interactions, setInteractions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const location = useLocation();
+  const [searchTerm, setSearchTerm] = useState(location.state?.searchTerm || '');
   
   // Edit states
   const [editData, setEditData] = useState(null);
@@ -28,10 +30,6 @@ const MapRoute = () => {
       return dateStr;
     }
   };
-
-  useEffect(() => {
-    fetchInteractions();
-  }, []);
 
   const fetchInteractions = async () => {
     try {
@@ -59,6 +57,10 @@ const MapRoute = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchInteractions();
+  }, []);
 
   const handleUpdateInteraction = async (e) => {
     e.stopPropagation();

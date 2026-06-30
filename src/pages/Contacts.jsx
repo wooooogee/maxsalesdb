@@ -14,12 +14,41 @@ import {
   MapPin, 
   MessageSquare,
   Calendar,
+  CheckSquare,
+  Square,
+  Edit2,
   Trash2,
   Copy
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useUser } from '../UserContext';
 import './Contacts.css';
+
+async function fetchContacts(setContacts, setLoading) {
+  try {
+    setLoading(true);
+    const cached = localStorage.getItem('sheet_v3_clients');
+    if (cached) {
+      setContacts(JSON.parse(cached));
+      setLoading(false); // 로컬 캐시 렌더링 즉시 로딩 해제 (속도 개선)
+    }
+    
+    const data = await sheetsClient.read('clients');
+    if (data && data.length > 0) {
+      const sorted = data.sort((a,b) => {
+        const idA = a.id ? parseInt(a.id.replace('c_', '')) : 0;
+        const idB = b.id ? parseInt(b.id.replace('c_', '')) : 0;
+        return idB - idA;
+      });
+      setContacts(sorted);
+      localStorage.setItem('sheet_v3_clients', JSON.stringify(sorted));
+    }
+  } catch (error) {
+    console.log('Failed to load contacts.', error.message);
+  } finally {
+    setLoading(false);
+  }
+}
 
 const Contacts = () => {
   const { user } = useUser();
@@ -29,8 +58,18 @@ const Contacts = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expandedContactId, setExpandedContactId] = useState(null);
-  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
-  const [selectedContactIds, setSelectedContactIds] = useState([]);
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(() => {
+    return sessionStorage.getItem('contacts_multi_select') === 'true';
+  });
+  const [selectedContactIds, setSelectedContactIds] = useState(() => {
+    const saved = sessionStorage.getItem('contacts_selected_ids');
+    return saved ? JSON.parse(saved) : [];
+  });
+  
+  useEffect(() => {
+    sessionStorage.setItem('contacts_multi_select', isMultiSelectMode);
+    sessionStorage.setItem('contacts_selected_ids', JSON.stringify(selectedContactIds));
+  }, [isMultiSelectMode, selectedContactIds]);
   
   // Custom delete modal states
   const [deleteTargetId, setDeleteTargetId] = useState(null);
@@ -51,7 +90,7 @@ const Contacts = () => {
 
 
   useEffect(() => {
-    fetchContacts();
+    fetchContacts(setContacts, setLoading);
   }, []);
 
   useEffect(() => {
@@ -73,29 +112,6 @@ const Contacts = () => {
   }, [contacts, selectedCity]);
 
 
-
-  const fetchContacts = async () => {
-    try {
-      setLoading(true);
-      // 1) 로컬 캐시에서 먼저 데이터 로드 (0.01초 초고속 렌더링)
-      const cached = localStorage.getItem('sheet_v3_clients');
-      if (cached) {
-        setContacts(JSON.parse(cached));
-        setLoading(false); // 로딩 스피너 즉시 중지하여 사용자 경험 개선
-      }
-      
-      // 2) 백그라운드에서 구글 스프레드시트 최신 데이터 실시간 조회
-      const data = await sheetsClient.read('clients');
-      if (data && data.length > 0) {
-        setContacts(data);
-        localStorage.setItem('sheet_v3_clients', JSON.stringify(data));
-      }
-    } catch (error) {
-      console.log('Fetch failed, empty list or cache fallback.', error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
 
 
 
@@ -239,7 +255,14 @@ const Contacts = () => {
         <div 
           key={contact.id} 
           className={`contact-card ${isExpanded ? 'expanded' : 'collapsed'}`}
-          style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', border: isSelected ? '2px solid var(--accent-color)' : '' }}
+          style={{ 
+            cursor: 'pointer', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            border: isSelected ? '2px solid #4caf50' : '',
+            backgroundColor: isSelected ? '#e8f5e9' : 'var(--bg-secondary)',
+            transition: 'background-color 0.2s, border 0.2s'
+          }}
           onClick={() => {
             if (isMultiSelectMode) {
               handleToggleSelect(contact.id);
@@ -259,28 +282,18 @@ const Contacts = () => {
               padding: '0.85rem 1rem'
             }}
           >
-            <div className="contact-company" style={{ fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-              {isMultiSelectMode && (
-                <input 
-                  type="checkbox" 
-                  checked={isSelected}
-                  onChange={() => handleToggleSelect(contact.id)}
-                  onClick={(e) => e.stopPropagation()}
-                  style={{ width: '16px', height: '16px', accentColor: 'var(--accent-color)', marginRight: '0.3rem' }}
-                />
-              )}
-              <Building size={15} style={{ color: 'var(--accent-color)', flexShrink: 0 }}/> 
-              <span style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div className="contact-company" style={{ fontSize: '0.9rem', display: 'flex', alignItems: 'flex-start', gap: '0.4rem', fontWeight: 600, color: 'var(--text-primary)', minWidth: 0, flex: 1 }}>
+              <Building size={16} style={{ color: isSelected ? 'var(--accent-color)' : 'var(--text-secondary)', flexShrink: 0, marginTop: '0.1rem' }} />
+              <span style={{ display: 'inline-block', wordBreak: 'keep-all' }}>
                 {contact.company}
                 {contact.name && (
-                  <>
-                    <span style={{ margin: '0 0.3rem', color: 'var(--text-secondary)' }}>-</span>
-                    <span style={{ fontWeight: 400, color: 'var(--text-secondary)' }}>{contact.name}</span>
-                  </>
+                  <span style={{ marginLeft: '0.3rem', fontSize: '0.8rem', fontWeight: 400, color: 'var(--text-secondary)' }}>
+                    ({contact.name})
+                  </span>
                 )}
               </span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0, marginLeft: '0.5rem' }}>
               <button
                 type="button"
                 className="btn-secondary"
@@ -295,7 +308,9 @@ const Contacts = () => {
                   color: 'var(--text-primary)',
                   display: 'flex',
                   alignItems: 'center',
-                  fontWeight: 500
+                  fontWeight: 500,
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -304,14 +319,29 @@ const Contacts = () => {
               >
                 수정
               </button>
-              <ChevronRight 
-                size={16} 
+              <button 
+                type="button"
                 style={{ 
-                  transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', 
-                  transition: 'transform 0.2s',
-                  color: 'var(--text-secondary)'
-                }} 
-              />
+                  padding: '0.2rem 0.5rem', 
+                  fontSize: '0.75rem', 
+                  borderRadius: '4px', 
+                  border: '1px solid var(--border-color)', 
+                  cursor: 'pointer',
+                  backgroundColor: 'var(--bg-secondary)',
+                  color: 'var(--text-primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  fontWeight: 500,
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate('/route', { state: { searchTerm: contact.company || contact.name } });
+                }}
+              >
+                기록
+              </button>
             </div>
           </div>
           
@@ -392,7 +422,7 @@ const Contacts = () => {
                     title="이 대상자에게 바로 미팅 기록하기"
                     onClick={(e) => {
                       e.stopPropagation();
-                      navigate('/meetings', { state: { selectedContactId: contact.id } });
+                      navigate('/meetings', { state: { selectedContactId: contact.id, defaultContactType: '방문' } });
                     }}
                     style={{ padding: '0.35rem 0.5rem', display: 'flex', alignItems: 'center', backgroundColor: 'var(--accent-color)', color: 'white', border: 'none', borderRadius: '4px' }}
                   >
@@ -512,7 +542,7 @@ const Contacts = () => {
       {/* Floating Action Button for Multi-select */}
       {isMultiSelectMode && selectedContactIds.length > 0 && (
         <div style={{
-          position: 'fixed', bottom: '20px', left: '50%', transform: 'translateX(-50%)',
+          position: 'fixed', bottom: '80px', left: '50%', transform: 'translateX(-50%)',
           backgroundColor: 'var(--accent-color)', color: 'white', padding: '0.8rem 1.5rem',
           borderRadius: '30px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 1000,
           display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontWeight: 600
@@ -520,7 +550,7 @@ const Contacts = () => {
         onClick={() => navigate('/meetings', { state: { selectedContactIds } })}
         >
           <Calendar size={18} />
-          {selectedContactIds.length}명 상담 기록 쓰기
+          {selectedContactIds.length}명 상담 기록
         </div>
       )}      {/* New Client Modal */}
       {isModalOpen && (

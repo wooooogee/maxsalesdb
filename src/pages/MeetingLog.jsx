@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { sheetsClient } from '../sheetsClient';
 import { analyzeMeetingWithAI, analyzeAudioWithAI } from '../geminiClient';
 import { 
@@ -19,7 +19,8 @@ import {
   Volume2,
   MapPin,
   Building,
-  ChevronRight
+  ChevronRight,
+  ChevronLeft
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useUser } from '../UserContext';
@@ -41,13 +42,14 @@ const fileToBase64 = (fileOrBlob) => {
 
 const MeetingLog = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const { user } = useUser();
   const [content, setContent] = useState('');
   const [summary, setSummary] = useState('');
   const [isSummarizing, setIsSummarizing] = useState(false);
   
   // Tab & List states
-  const [activeTab, setActiveTab] = useState('write'); // write, list
+  const [activeTab, setActiveTab] = useState(location.state?.activeTab || 'write'); // write, list
   const [contactQueue, setContactQueue] = useState([]);
   const [currentQueueIndex, setCurrentQueueIndex] = useState(0);
   const [multiLogs, setMultiLogs] = useState([]);
@@ -660,11 +662,15 @@ const MeetingLog = () => {
 
   return (
     <div className="card meeting-log-page" style={{ paddingBottom: '3rem' }}>
-      <h2 style={{ marginBottom: '1.25rem', fontSize: '1.3rem', fontWeight: 700 }}>상담 기록 작성</h2>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.25rem', gap: '0.5rem' }}>
+        <button type="button" onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', color: 'var(--text-primary)' }}>
+          <ChevronLeft size={24} />
+        </button>
+        <h2 style={{ fontSize: '1.3rem', fontWeight: 700, margin: 0 }}>상담 기록 작성</h2>
+      </div>
       {contactQueue.length > 1 && (
         <div style={{ backgroundColor: 'var(--bg-secondary)', padding: '0.8rem 1rem', borderRadius: 'var(--radius-md)', marginBottom: '1rem', borderLeft: '4px solid var(--accent-color)', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span>다중 기록 작성 중 ({currentQueueIndex + 1} / {contactQueue.length})</span>
-          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>순차적으로 기기에 임시 저장됩니다.</span>
         </div>
       )}
       
@@ -1143,7 +1149,7 @@ const MeetingLog = () => {
                 onClick={handleBatchSave}
                 style={{ flex: 1, padding: '1rem', backgroundColor: '#4caf50', border: 'none', color: 'white' }}
               >
-                <Save size={18} style={{ marginRight: '0.5rem' }} /> 일괄 저장하기
+                <Save size={18} style={{ marginRight: '0.5rem' }} /> 저장하기
               </button>
             )}
           </div>
