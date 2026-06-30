@@ -112,6 +112,10 @@
   border-color: var(--accent-color);
 }
 
+.calendar-cell.other-month {
+  opacity: 0.4;
+}
+
 .calendar-event-dot {
   width: 5px;
   height: 5px;

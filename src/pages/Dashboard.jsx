@@ -267,11 +267,19 @@ const Dashboard = () => {
   
   // Padding for start of month
   const startDayOfWeek = monthStart.getDay(); // 0 is Sunday
-  const paddingStart = Array(startDayOfWeek).fill(null);
+  const paddingStart = Array.from({ length: startDayOfWeek }, (_, i) => {
+    const d = new Date(monthStart);
+    d.setDate(d.getDate() - (startDayOfWeek - i));
+    return d;
+  });
   
   // Padding for end of month
   const endDayOfWeek = monthEnd.getDay();
-  const paddingEnd = Array(6 - endDayOfWeek).fill(null);
+  const paddingEnd = Array.from({ length: 6 - endDayOfWeek }, (_, i) => {
+    const d = new Date(monthEnd);
+    d.setDate(d.getDate() + (i + 1));
+    return d;
+  });
   
   const calendarDays = [...paddingStart, ...daysInMonth, ...paddingEnd];
 
@@ -285,7 +293,7 @@ const Dashboard = () => {
       } catch (e) {
         return false;
       }
-    });
+    }).sort((a, b) => new Date(a.date) - new Date(b.date));
   };
 
   const selectedDateMeetings = getDayMeetings(selectedDate);

@@ -287,7 +287,7 @@ const MeetingLog = () => {
             id: 'temp_meet_' + Date.now() + '_' + i, client_id: log.contactId, client_name: clientName, date: parsedMeetingDate,
             type: finalMeetingType || '미팅', result: '진행 예정 (준비 단계)', creator: user
           };
-          await sheetsClient.insert('schedules', meetingData);
+          await sheetsClient.insert('meetings', meetingData);
         }
       } catch (err) {
         console.error('Batch insert err:', err);
