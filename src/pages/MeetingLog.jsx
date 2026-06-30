@@ -144,6 +144,7 @@ const MeetingLog = () => {
 
   useEffect(() => {
     if (location.state?.selectedContactIds && location.state.selectedContactIds.length > 0) {
+      sessionStorage.removeItem('meetingLogDraft');
       const ids = location.state.selectedContactIds;
       setContactQueue(ids);
       setCurrentQueueIndex(0);
@@ -156,8 +157,32 @@ const MeetingLog = () => {
       }));
       setMultiLogs(initialLogs);
     } else if (location.state?.selectedContactId) {
+      sessionStorage.removeItem('meetingLogDraft');
       setSelectedContactId(location.state.selectedContactId);
       setContactQueue([]);
+    } else {
+      const draftStr = sessionStorage.getItem('meetingLogDraft');
+      if (draftStr) {
+        try {
+          const draft = JSON.parse(draftStr);
+          setSelectedContactId(draft.selectedContactId);
+          setContactQueue(draft.contactQueue);
+          setCurrentQueueIndex(draft.currentQueueIndex);
+          setMultiLogs(draft.multiLogs);
+          setContent(draft.content);
+          setSummary(draft.summary);
+          setContactType(draft.contactType);
+          setMaterialSent(draft.materialSent);
+          setHasNextMeeting(draft.hasNextMeeting);
+          setNextMeetingDateOnly(draft.nextMeetingDateOnly);
+          setNextMeetingTimeOnly(draft.nextMeetingTimeOnly);
+          setNextMeetingType(draft.nextMeetingType);
+          setCustomMeetingType(draft.customMeetingType);
+          setActiveTab(draft.activeTab || 'write');
+        } catch (e) {
+          console.error('Failed to load draft:', e);
+        }
+      }
     }
   }, [location.state]);
 
@@ -169,6 +194,20 @@ const MeetingLog = () => {
     };
     return newLogs;
   };
+
+  useEffect(() => {
+    if (!selectedContactId && contactQueue.length === 0) return;
+    const draft = {
+      selectedContactId, content, summary, contactType, materialSent, hasNextMeeting,
+      nextMeetingDateOnly, nextMeetingTimeOnly, nextMeetingType, customMeetingType,
+      contactQueue, currentQueueIndex, multiLogs: saveCurrentToLogs(), activeTab
+    };
+    sessionStorage.setItem('meetingLogDraft', JSON.stringify(draft));
+  }, [
+    selectedContactId, content, summary, contactType, materialSent, hasNextMeeting,
+    nextMeetingDateOnly, nextMeetingTimeOnly, nextMeetingType, customMeetingType,
+    contactQueue, currentQueueIndex, activeTab, multiLogs
+  ]);
 
   const loadFormFromMultiLogs = (index, logs) => {
     const log = logs[index];
@@ -253,6 +292,7 @@ const MeetingLog = () => {
     }
     
     toast.success('다중 기록 저장이 완료되었습니다!', { id: 'batch-save' });
+    sessionStorage.removeItem('meetingLogDraft');
     setContactQueue([]);
     setMultiLogs([]);
     setContent('');
@@ -623,6 +663,7 @@ const MeetingLog = () => {
     localStorage.setItem('sheet_v3_interactions', JSON.stringify(updatedCache));
 
     // Reset State Immediately
+    sessionStorage.removeItem('meetingLogDraft');
     setContent('');
     setSummary('');
     setMaterialSent('');
