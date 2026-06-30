@@ -263,19 +263,23 @@ const MeetingLog = () => {
       const log = finalLogs[i];
       if (!log.contactId) continue;
 
+      const hasInteractionContent = log.content.trim() || log.summary.trim() || log.materialSent || log.uploadedFile || log.audioBlob;
+      if (!hasInteractionContent && !log.hasNextMeeting) continue;
+
       const client = contacts.find(c => c.id === log.contactId);
       const clientName = client ? `${client.company} - ${client.name}` : '알 수 없음';
       
       const parsedMeetingDate = log.hasNextMeeting && log.nextMeetingDateOnly ? parseKoreanDateTime(`${log.nextMeetingDateOnly} ${log.nextMeetingTimeOnly}`) : '';
       
-      const tempId = 'temp_' + Date.now() + '_' + i;
-      const interactionData = {
-        id: tempId, client_id: log.contactId, client_name: clientName, date: new Date().toISOString().substring(0, 16).replace('T', ' '),
-        type: log.contactType, summary: log.summary || log.content, content: log.content, attachments: '', next_meeting_date: parsedMeetingDate, creator: user
-      };
-
       try {
-        await sheetsClient.insert('interactions', interactionData);
+        if (hasInteractionContent) {
+          const tempId = 'temp_' + Date.now() + '_' + i;
+          const interactionData = {
+            id: tempId, client_id: log.contactId, client_name: clientName, date: new Date().toISOString().substring(0, 16).replace('T', ' '),
+            type: log.contactType, summary: log.summary || log.content, content: log.content, attachments: '', next_meeting_date: parsedMeetingDate, creator: user
+          };
+          await sheetsClient.insert('interactions', interactionData);
+        }
         
         if (log.hasNextMeeting) {
           const finalMeetingType = log.nextMeetingType === '직접입력' ? log.customMeetingType : log.nextMeetingType;
@@ -613,23 +617,34 @@ const MeetingLog = () => {
       return;
     }
 
+    const hasInteractionContent = content.trim() || summary.trim() || materialSent || (window.meetingAttachments && window.meetingAttachments.length > 0);
+
+    if (!hasInteractionContent && !hasNextMeeting) {
+      toast.error('저장할 내용이나 일정이 없습니다.');
+      return;
+    }
+
     const client = contacts.find(c => c.id === selectedContactId);
     const clientName = client ? `${client.company} - ${client.name}` : '알 수 없음';
 
     // 1) Prepare data
     const tempId = 'temp_' + Date.now();
-    const interactionData = {
-      id: tempId,
-      client_id: selectedContactId,
-      client_name: clientName,
-      date: new Date().toISOString().substring(0, 16).replace('T', ' '),
-      type: contactType,
-      summary: summary || content,
-      content: content,
-      attachments: (window.meetingAttachments || []).join(','),
-      next_meeting_date: parsedMeetingDate,
-      creator: user
-    };
+    let interactionData = null;
+    
+    if (hasInteractionContent) {
+      interactionData = {
+        id: tempId,
+        client_id: selectedContactId,
+        client_name: clientName,
+        date: new Date().toISOString().substring(0, 16).replace('T', ' '),
+        type: contactType,
+        summary: summary || content,
+        content: content,
+        attachments: (window.meetingAttachments || []).join(','),
+        next_meeting_date: parsedMeetingDate,
+        creator: user
+      };
+    }
 
     let meetingData = null;
     if (hasNextMeeting) {
@@ -646,17 +661,21 @@ const MeetingLog = () => {
     }
 
     // 2) Optimistic UI Update & Cache Update
-    toast.success('기록 저장을 시작했습니다. (화면 이동 가능)', { id: 'interaction-save' });
-    
-    const cachedStr = localStorage.getItem('sheet_v3_interactions');
-    let cachedInteractions = [];
-    if (cachedStr) {
-      try {
-        cachedInteractions = JSON.parse(cachedStr);
-      } catch (e) {}
+    if (interactionData) {
+      toast.success('기록 저장을 시작했습니다. (화면 이동 가능)', { id: 'interaction-save' });
+      
+      const cachedStr = localStorage.getItem('sheet_v3_interactions');
+      let cachedInteractions = [];
+      if (cachedStr) {
+        try {
+          cachedInteractions = JSON.parse(cachedStr);
+        } catch (e) {}
+      }
+      const updatedCache = [interactionData, ...cachedInteractions];
+      localStorage.setItem('sheet_v3_interactions', JSON.stringify(updatedCache));
+    } else {
+      toast.success('일정 저장을 시작했습니다. (화면 이동 가능)', { id: 'interaction-save' });
     }
-    const updatedCache = [interactionData, ...cachedInteractions];
-    localStorage.setItem('sheet_v3_interactions', JSON.stringify(updatedCache));
 
     // Reset State Immediately
     sessionStorage.removeItem('meetingLogDraft');
@@ -671,28 +690,35 @@ const MeetingLog = () => {
 
     // 3) Background Save
     try {
-      const savedInteraction = await sheetsClient.insert('interactions', interactionData);
+      let savedInteraction = null;
+      if (interactionData) {
+        savedInteraction = await sheetsClient.insert('interactions', interactionData);
+      }
       
       if (meetingData) {
         await sheetsClient.insert('meetings', meetingData);
       }
       
       // 서버에서 발급받은 ID로 캐시 업데이트
-      const latestCacheStr = localStorage.getItem('sheet_v3_interactions');
-      if (latestCacheStr) {
-        const latestCache = JSON.parse(latestCacheStr);
-        const fixedCache = latestCache.map(i => i.id === tempId ? savedInteraction : i);
-        localStorage.setItem('sheet_v3_interactions', JSON.stringify(fixedCache));
+      if (savedInteraction) {
+        const latestCacheStr = localStorage.getItem('sheet_v3_interactions');
+        if (latestCacheStr) {
+          const latestCache = JSON.parse(latestCacheStr);
+          const fixedCache = latestCache.map(i => i.id === tempId ? savedInteraction : i);
+          localStorage.setItem('sheet_v3_interactions', JSON.stringify(fixedCache));
+        }
       }
     } catch (err) {
       console.error("Save failed:", err);
-      toast.error('기록 저장 중 오류가 발생했습니다: ' + err.message);
+      toast.error('저장 중 오류가 발생했습니다: ' + err.message);
       
       // 에러 시 임시 항목 제거
-      const errCacheStr = localStorage.getItem('sheet_v3_interactions');
-      if (errCacheStr) {
-        const errCache = JSON.parse(errCacheStr);
-        localStorage.setItem('sheet_v3_interactions', JSON.stringify(errCache.filter(i => i.id !== tempId)));
+      if (interactionData) {
+        const errCacheStr = localStorage.getItem('sheet_v3_interactions');
+        if (errCacheStr) {
+          const errCache = JSON.parse(errCacheStr);
+          localStorage.setItem('sheet_v3_interactions', JSON.stringify(errCache.filter(i => i.id !== tempId)));
+        }
       }
     }
   };
