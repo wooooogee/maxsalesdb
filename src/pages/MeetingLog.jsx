@@ -262,7 +262,6 @@ const MeetingLog = () => {
     for (let i = 0; i < finalLogs.length; i++) {
       const log = finalLogs[i];
       if (!log.contactId) continue;
-      if (!log.content.trim() && !log.summary.trim()) continue;
 
       const client = contacts.find(c => c.id === log.contactId);
       const clientName = client ? `${client.company} - ${client.name}` : '알 수 없음';
@@ -598,10 +597,7 @@ const MeetingLog = () => {
       toast.error('미팅 대상자를 선택해 주세요.');
       return;
     }
-    if (!content.trim() && !summary.trim()) {
-      toast.error('상담 세부 내용 또는 한줄 요약을 기록해 주세요.');
-      return;
-    }
+
     if (hasNextMeeting && !nextMeetingDate) {
       toast.error('다음 미팅 일정을 지정해 주세요.');
       return;
