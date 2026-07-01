@@ -84,7 +84,7 @@ const Contacts = () => {
   // Form State
   const [formData, setFormData] = useState({
     company: '', title: '', name: '', recommender: '', phone: '', email: '', fax: '',
-    address: '', city: '', district: '', latitude: '', longitude: ''
+    address: '', city: '', district: '', latitude: '', longitude: '', interest_level: 'none'
   });
 
 
@@ -183,7 +183,7 @@ const Contacts = () => {
       // Reset form
       setFormData({
         company: '', title: '', name: '', recommender: '', phone: '', email: '', fax: '',
-        address: '', city: '', district: '', latitude: '', longitude: ''
+        address: '', city: '', district: '', latitude: '', longitude: '', interest_level: 'none'
       });
     } catch (error) {
       toast.error('저장 실패: ' + error.message, { id: 'client-save' });
@@ -251,6 +251,16 @@ const Contacts = () => {
     return filteredContacts.map(contact => {
       const isExpanded = expandedContactId === contact.id;
       const isSelected = selectedContactIds.includes(contact.id);
+      
+      const interestColorMap = {
+        'green': '#4caf50',
+        'yellow': '#d4b106',
+        'red': '#f44336',
+        'none': 'transparent'
+      };
+      const interestColor = interestColorMap[contact.interest_level] || 'transparent';
+      const borderStyle = isSelected ? '2px solid #4caf50' : (interestColor !== 'transparent' ? `2px solid ${interestColor}` : '');
+
       return (
         <div 
           key={contact.id} 
@@ -259,7 +269,7 @@ const Contacts = () => {
             cursor: 'pointer', 
             display: 'flex', 
             flexDirection: 'column', 
-            border: isSelected ? '2px solid #4caf50' : '',
+            border: borderStyle,
             backgroundColor: isSelected ? '#e8f5e9' : 'var(--bg-secondary)',
             transition: 'background-color 0.2s, border 0.2s'
           }}
@@ -467,7 +477,7 @@ const Contacts = () => {
             onClick={() => {
               setFormData({
                 company: '', title: '', name: '', recommender: '', phone: '', email: '', fax: '',
-                address: '', city: '', district: '', latitude: '', longitude: ''
+                address: '', city: '', district: '', latitude: '', longitude: '', interest_level: 'none'
               });
               setIsModalOpen(true);
             }}
@@ -588,6 +598,16 @@ const Contacts = () => {
               <div className="form-group" style={{ gridColumn: 'span 2' }}>
                 <label>팩스</label>
                 <input type="text" name="fax" value={formData.fax} onChange={handleInputChange} placeholder="예: 02-123-4567" />
+              </div>
+
+              <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                <label>관심도</label>
+                <select name="interest_level" value={formData.interest_level || 'none'} onChange={handleInputChange} style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}>
+                  <option value="none">선택안함 (기본)</option>
+                  <option value="green">🟢 긍정 (녹색)</option>
+                  <option value="yellow">🟡 보류 (노란색)</option>
+                  <option value="red">🔴 부정/거절 (빨간색)</option>
+                </select>
               </div>
 
               {/* Address Section */}

@@ -88,18 +88,47 @@ const Dashboard = () => {
       return;
     }
 
-    const client = clients.find(c => c.id === newMeetClient);
-    const clientName = client ? `${client.company} - ${client.name}` : '알 수 없음';
+    let selectedClientId = newMeetClient;
+    let selectedClientName = '알 수 없음';
+    
+    // Check if newMeetClient matches an existing ID or a "Company - Name" format
+    const existingClient = clients.find(c => 
+      c.id === newMeetClient || 
+      (c.company ? `${c.company} - ${c.name}` : c.name) === newMeetClient ||
+      c.company === newMeetClient
+    );
 
     try {
       setIsAddingMeeting(true);
       toast.loading(editMeetingId ? '일정을 수정하는 중...' : '일정을 등록하는 중...', { id: 'direct-add' });
 
+      if (existingClient) {
+        selectedClientId = existingClient.id;
+        selectedClientName = existingClient.company ? `${existingClient.company} - ${existingClient.name}` : existingClient.name;
+      } else {
+        // Create new client since it doesn't match
+        const newContact = {
+          company: newMeetClient,
+          name: '담당자 (직접등록)',
+          creator: user,
+          interest_level: 'none',
+          created_at: new Date().toISOString()
+        };
+        const savedContact = await sheetsClient.insert('clients', newContact);
+        setClients(prev => {
+          const next = [savedContact, ...prev];
+          localStorage.setItem('sheet_v3_clients', JSON.stringify(next));
+          return next;
+        });
+        selectedClientId = savedContact.id;
+        selectedClientName = `${savedContact.company} - ${savedContact.name}`;
+      }
+
       const finalType = newMeetType === '직접입력' ? newMeetCustomType : newMeetType;
 
       const meetingData = {
-        client_id: newMeetClient,
-        client_name: clientName,
+        client_id: selectedClientId,
+        client_name: selectedClientName,
         date: parsedDateStr,
         type: finalType || '미팅',
       };
@@ -141,7 +170,14 @@ const Dashboard = () => {
   const handleEditScheduleClick = (meet) => {
     try {
       setEditMeetingId(meet.id);
-      setNewMeetClient(meet.client_id);
+      
+      // Look up client to format as "Company - Name", fallback to meet.client_name
+      const client = clients.find(c => c.id === meet.client_id);
+      const displayStr = client 
+        ? (client.company ? `${client.company} - ${client.name}` : client.name)
+        : (meet.client_name || meet.client_id);
+      
+      setNewMeetClient(displayStr);
       const dateObj = parseISO(meet.date);
       setSelectedDate(dateObj);
       setNewMeetTime(format(dateObj, 'HH:mm'));
@@ -158,6 +194,44 @@ const Dashboard = () => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (e) {
       toast.error('일정 데이터를 불러오는데 실패했습니다.');
+    }
+  };
+
+  const clickTimerRef = React.useRef(null);
+  
+  const handleMeetingClick = async (meet) => {
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+      // Double click
+      handleEditScheduleClick(meet);
+    } else {
+      clickTimerRef.current = setTimeout(async () => {
+        clickTimerRef.current = null;
+        // Single click: toggle completion
+        const isCompleted = meet.result === '완료';
+        const newResult = isCompleted ? '진행 예정' : '완료';
+        
+        // Optimistic UI update
+        const updatedMeet = { ...meet, result: newResult };
+        setMeetings(prev => {
+          const next = prev.map(m => m.id === meet.id ? updatedMeet : m);
+          localStorage.setItem('sheet_v3_meetings', JSON.stringify(next));
+          return next;
+        });
+
+        try {
+          await sheetsClient.update('meetings', updatedMeet);
+        } catch (err) {
+          toast.error('상태 업데이트 실패', { id: 'meet-complete' });
+          // Revert optimistic update
+          setMeetings(prev => {
+            const next = prev.map(m => m.id === meet.id ? meet : m);
+            localStorage.setItem('sheet_v3_meetings', JSON.stringify(next));
+            return next;
+          });
+        }
+      }, 150);
     }
   };
 
@@ -567,18 +641,20 @@ const Dashboard = () => {
             </h4>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>대상자 선택 *</label>
-              <select 
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>대상자 (검색 또는 직접 입력) *</label>
+              <input 
+                list="client-list"
                 value={newMeetClient} 
                 onChange={(e) => setNewMeetClient(e.target.value)}
+                placeholder="대상자 검색 또는 직접 입력..."
                 style={{ width: '100%', padding: '0.35rem', fontSize: '0.85rem' }}
                 required
-              >
-                <option value="">-- 대상자 선택 --</option>
+              />
+              <datalist id="client-list">
                 {clients.map(c => (
-                  <option key={c.id} value={c.id}>{c.company} - {c.name}</option>
+                  <option key={c.id} value={c.company ? `${c.company} - ${c.name}` : c.name}></option>
                 ))}
-              </select>
+              </datalist>
             </div>
 
             <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -657,8 +733,22 @@ const Dashboard = () => {
           <div className="schedule-list">
             {selectedDateMeetings.map(meet => {
               const client = getClientContact(meet.client_id);
+              const isCompleted = meet.result === '완료';
+              const cardStyle = isCompleted 
+                ? { backgroundColor: '#e8f5e9', border: '2px solid #4caf50', opacity: 0.8 }
+                : (editMeetingId === meet.id ? { backgroundColor: '#fee2e2', border: '2px solid #ef4444' } : {});
+
               return (
-                <div key={meet.id} className="schedule-card">
+                <div 
+                  key={meet.id} 
+                  className="schedule-card" 
+                  style={cardStyle}
+                  onClick={(e) => {
+                    // Prevent bubbling if clicking a button inside
+                    if(e.target.closest('button') || e.target.closest('a') || e.target.closest('input')) return;
+                    handleMeetingClick(meet);
+                  }}
+                >
                   <div className="schedule-card-header">
                     <span className="schedule-time">
                       {format(parseISO(meet.date), 'HH:mm')}
