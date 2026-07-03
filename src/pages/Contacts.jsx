@@ -78,6 +78,7 @@ const Contacts = () => {
   // Filters State
   const [selectedCity, setSelectedCity] = useState('');
   const [selectedDistrict, setSelectedDistrict] = useState('');
+  const [selectedInterest, setSelectedInterest] = useState('');
   const [cities, setCities] = useState([]);
   const [districts, setDistricts] = useState([]);
 
@@ -242,10 +243,11 @@ const Contacts = () => {
       
       const matchesCity = selectedCity ? contact.city === selectedCity : true;
       const matchesDistrict = selectedDistrict ? contact.district === selectedDistrict : true;
+      const matchesInterest = selectedInterest ? contact.interest_level === selectedInterest : true;
       
-      return matchesSearch && matchesCity && matchesDistrict;
+      return matchesSearch && matchesCity && matchesDistrict && matchesInterest;
     });
-  }, [contacts, searchQuery, selectedCity, selectedDistrict]);
+  }, [contacts, searchQuery, selectedCity, selectedDistrict, selectedInterest]);
 
   const renderedContacts = React.useMemo(() => {
     return filteredContacts.map(contact => {
@@ -489,7 +491,7 @@ const Contacts = () => {
       </div>
 
       {/* Filter Options */}
-      <div className="filter-row">
+      <div className="filter-row" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
         <select 
           className="filter-select"
           value={selectedCity} 
@@ -498,7 +500,7 @@ const Contacts = () => {
             setSelectedDistrict('');
           }}
         >
-          <option value="">-- 시/도 선택 --</option>
+          <option value="">시/도 선택</option>
           {cities.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
 
@@ -508,16 +510,29 @@ const Contacts = () => {
           disabled={!selectedCity}
           onChange={(e) => setSelectedDistrict(e.target.value)}
         >
-          <option value="">-- 시/군/구 선택 --</option>
+          <option value="">시/군/구 선택</option>
           {districts.map(d => <option key={d} value={d}>{d}</option>)}
         </select>
+
+        <select 
+          className="filter-select"
+          value={selectedInterest} 
+          onChange={(e) => setSelectedInterest(e.target.value)}
+        >
+          <option value="">관심도</option>
+          <option value="green">🟢 긍정</option>
+          <option value="yellow">🟡 보류</option>
+          <option value="red">🔴 부정/거절</option>
+          <option value="none">선택안함</option>
+        </select>
         
-        {(selectedCity || selectedDistrict) && (
+        {(selectedCity || selectedDistrict || selectedInterest) && (
           <button 
             className="btn-secondary btn-sm"
             onClick={() => {
               setSelectedCity('');
               setSelectedDistrict('');
+              setSelectedInterest('');
             }}
           >
             필터 초기화

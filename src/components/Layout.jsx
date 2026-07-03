@@ -8,10 +8,10 @@ import NotificationManager from './NotificationManager';
 const Layout = () => {
   const navLinks = [
     { to: '/', icon: <Home size={20} />, label: '홈' },
-    { to: '/contacts', icon: <Users size={20} />, label: '대상자 관리' },
     { to: '/meetings', icon: <Calendar size={20} />, label: '상담 기록' },
     { to: '/route', icon: <FileText size={20} />, label: '기록 내용' },
     { to: '/chat', icon: <MessageSquare size={20} />, label: '업무 공유방' },
+    { to: '/contacts', icon: <Users size={20} />, label: '대상자 관리' },
   ];
 
   return (
@@ -27,6 +27,11 @@ const Layout = () => {
               key={link.to} 
               to={link.to} 
               className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
+              onClick={() => {
+                if (link.to === '/meetings') {
+                  sessionStorage.removeItem('meetingLogDraft');
+                }
+              }}
             >
               {link.icon}
               <span>{link.label}</span>
@@ -40,9 +45,6 @@ const Layout = () => {
           <div className="header-title">미팅 및 상담 기록 시스템</div>
           <div className="header-actions" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <NotificationManager />
-            <button className="btn-icon">
-              <Calendar size={20} />
-            </button>
           </div>
         </header>
         <div className="page-content">
@@ -57,6 +59,11 @@ const Layout = () => {
             key={link.to} 
             to={link.to} 
             className={({ isActive }) => (isActive ? 'mobile-nav-item active' : 'mobile-nav-item')}
+            onClick={() => {
+              if (link.to === '/meetings') {
+                sessionStorage.removeItem('meetingLogDraft');
+              }
+            }}
           >
             {React.cloneElement(link.icon, { size: 24 })}
             <span>{link.label}</span>

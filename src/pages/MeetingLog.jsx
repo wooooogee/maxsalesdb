@@ -1,22 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { sheetsClient } from '../sheetsClient';
-import { analyzeMeetingWithAI, analyzeAudioWithAI } from '../geminiClient';
 import { 
-  Mic, 
   Save, 
-  Square, 
-  Wand2, 
   UserCheck, 
   Calendar, 
   Phone, 
   Mail, 
   FileText,
-  Upload,
   X,
   Paperclip,
-  Play,
-  Volume2,
   MapPin,
   Building,
   ChevronRight,
@@ -45,9 +38,24 @@ const MeetingLog = () => {
   const navigate = useNavigate();
   const { user } = useUser();
   const [content, setContent] = useState('');
-  const [summary, setSummary] = useState('');
-  const [isSummarizing, setIsSummarizing] = useState(false);
   
+  // 성과 관리
+  const [achievements, setAchievements] = useState([]);
+  
+  const addAchievement = () => {
+    setAchievements([...achievements, { name: '', phone: '', type: '상조', detail: '' }]);
+  };
+  const removeAchievement = (index) => {
+    const newArr = [...achievements];
+    newArr.splice(index, 1);
+    setAchievements(newArr);
+  };
+  const updateAchievement = (index, field, value) => {
+    const newArr = [...achievements];
+    newArr[index][field] = value;
+    setAchievements(newArr);
+  };
+
   // Tab & List states
   const [activeTab, setActiveTab] = useState(location.state?.activeTab || 'write'); // write, list
   const [contactQueue, setContactQueue] = useState([]);
@@ -85,7 +93,7 @@ const MeetingLog = () => {
 
   const [nextMeetingDateOnly, setNextMeetingDateOnly] = useState(getLocalDateString());
   const [nextMeetingTimeOnly, setNextMeetingTimeOnly] = useState('10:00');
-  const [nextMeetingType, setNextMeetingType] = useState('브리핑'); // 브리핑, 인사, 소개, 직접입력
+  const [nextMeetingType, setNextMeetingType] = useState(['브리핑']); // array for multi-select
   const [customMeetingType, setCustomMeetingType] = useState('');
   const [nextMeetingDate, setNextMeetingDate] = useState('');
 
@@ -107,18 +115,6 @@ const MeetingLog = () => {
     }
   }, [nextMeetingDate]);
 
-  // --- 오디오 관련 상태 ---
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [audioBlob, setAudioBlob] = useState(null);
-  const [audioUrl, setAudioUrl] = useState('');
-  const [uploadedFile, setUploadedFile] = useState(null);
-
-  // References for Recording
-  const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
-  const timerIntervalRef = useRef(null);
-
   const fetchContacts = async () => {
     try {
       const cached = localStorage.getItem('sheet_v3_clients');
@@ -137,9 +133,6 @@ const MeetingLog = () => {
 
   useEffect(() => {
     fetchContacts();
-    return () => {
-      clearInterval(timerIntervalRef.current);
-    };
   }, []);
 
   useEffect(() => {
@@ -151,9 +144,8 @@ const MeetingLog = () => {
       setSelectedContactId(ids[0]);
       
       const initialLogs = ids.map(id => ({
-        contactId: id, content: '', summary: '', contactType: location.state?.defaultContactType || '전화', materialSent: '', hasNextMeeting: false,
-        nextMeetingDateOnly: getLocalDateString(), nextMeetingTimeOnly: '10:00', nextMeetingType: '브리핑', customMeetingType: '',
-        audioBlob: null, audioUrl: '', uploadedFile: null,
+        contactId: id, content: '', contactType: location.state?.defaultContactType || '전화', materialSent: '', hasNextMeeting: false,
+        nextMeetingDateOnly: getLocalDateString(), nextMeetingTimeOnly: '10:00', nextMeetingType: ['브리핑'], customMeetingType: '', achievements: []
       }));
       setMultiLogs(initialLogs);
     } else if (location.state?.selectedContactId) {
@@ -170,7 +162,6 @@ const MeetingLog = () => {
           setCurrentQueueIndex(draft.currentQueueIndex);
           setMultiLogs(draft.multiLogs);
           setContent(draft.content);
-          setSummary(draft.summary);
           setContactType(draft.contactType);
           setMaterialSent(draft.materialSent);
           setHasNextMeeting(draft.hasNextMeeting);
@@ -178,6 +169,7 @@ const MeetingLog = () => {
           setNextMeetingTimeOnly(draft.nextMeetingTimeOnly);
           setNextMeetingType(draft.nextMeetingType);
           setCustomMeetingType(draft.customMeetingType);
+          setAchievements(draft.achievements || []);
           setActiveTab(draft.activeTab || 'write');
         } catch (e) {
           console.error('Failed to load draft:', e);
@@ -189,8 +181,8 @@ const MeetingLog = () => {
   const saveCurrentToLogs = () => {
     const newLogs = [...multiLogs];
     newLogs[currentQueueIndex] = {
-      contactId: selectedContactId, content, summary, contactType, materialSent, hasNextMeeting,
-      nextMeetingDateOnly, nextMeetingTimeOnly, nextMeetingType, customMeetingType, audioBlob, audioUrl, uploadedFile,
+      contactId: selectedContactId, content, contactType, materialSent, hasNextMeeting,
+      nextMeetingDateOnly, nextMeetingTimeOnly, nextMeetingType, customMeetingType, achievements
     };
     return newLogs;
   };
@@ -198,15 +190,15 @@ const MeetingLog = () => {
   useEffect(() => {
     if (!selectedContactId && contactQueue.length === 0) return;
     const draft = {
-      selectedContactId, content, summary, contactType, materialSent, hasNextMeeting,
+      selectedContactId, content, contactType, materialSent, hasNextMeeting,
       nextMeetingDateOnly, nextMeetingTimeOnly, nextMeetingType, customMeetingType,
-      contactQueue, currentQueueIndex, multiLogs: saveCurrentToLogs(), activeTab
+      contactQueue, currentQueueIndex, multiLogs: saveCurrentToLogs(), activeTab, achievements
     };
     sessionStorage.setItem('meetingLogDraft', JSON.stringify(draft));
   }, [
-    selectedContactId, content, summary, contactType, materialSent, hasNextMeeting,
+    selectedContactId, content, contactType, materialSent, hasNextMeeting,
     nextMeetingDateOnly, nextMeetingTimeOnly, nextMeetingType, customMeetingType,
-    contactQueue, currentQueueIndex, activeTab, multiLogs
+    contactQueue, currentQueueIndex, activeTab, multiLogs, achievements
   ]);
 
   const loadFormFromMultiLogs = (index, logs) => {
@@ -214,7 +206,6 @@ const MeetingLog = () => {
     if (!log) return;
     setSelectedContactId(log.contactId);
     setContent(log.content);
-    setSummary(log.summary);
     setContactType(log.contactType);
     setMaterialSent(log.materialSent);
     setHasNextMeeting(log.hasNextMeeting);
@@ -222,9 +213,7 @@ const MeetingLog = () => {
     setNextMeetingTimeOnly(log.nextMeetingTimeOnly);
     setNextMeetingType(log.nextMeetingType);
     setCustomMeetingType(log.customMeetingType);
-    setAudioBlob(log.audioBlob);
-    setAudioUrl(log.audioUrl);
-    setUploadedFile(log.uploadedFile);
+    setAchievements(log.achievements || []);
   };
 
   const handlePrevContact = () => {
@@ -252,8 +241,8 @@ const MeetingLog = () => {
     
     const finalLogs = [...multiLogs];
     finalLogs[currentQueueIndex] = {
-      contactId: selectedContactId, content, summary, contactType, materialSent, hasNextMeeting,
-      nextMeetingDateOnly, nextMeetingTimeOnly, nextMeetingType, customMeetingType, audioBlob, audioUrl, uploadedFile,
+      contactId: selectedContactId, content, contactType, materialSent, hasNextMeeting,
+      nextMeetingDateOnly, nextMeetingTimeOnly, nextMeetingType, customMeetingType, achievements
     };
     setMultiLogs(finalLogs);
 
@@ -263,7 +252,16 @@ const MeetingLog = () => {
       const log = finalLogs[i];
       if (!log.contactId) continue;
 
-      const hasInteractionContent = log.content.trim() || log.summary.trim() || log.materialSent || log.uploadedFile || log.audioBlob;
+      let finalContent = log.content;
+      if (log.achievements && log.achievements.length > 0) {
+        const achievementLines = log.achievements.map(a => {
+          const detailStr = a.type === '상조' ? `${a.detail}구좌` : a.detail;
+          return `- 이름: ${a.name} | 연락처: ${a.phone} | 성과: ${a.type} (${detailStr})`;
+        }).join('\n');
+        finalContent += `\n\n[성과 기록]\n${achievementLines}`;
+      }
+
+      const hasInteractionContent = finalContent.trim() || log.materialSent;
       if (!hasInteractionContent && !log.hasNextMeeting) continue;
 
       const client = contacts.find(c => c.id === log.contactId);
@@ -276,16 +274,22 @@ const MeetingLog = () => {
           const tempId = 'temp_' + Date.now() + '_' + i;
           const interactionData = {
             id: tempId, client_id: log.contactId, client_name: clientName, date: new Date().toISOString().substring(0, 16).replace('T', ' '),
-            type: log.contactType, summary: log.summary || log.content, content: log.content, attachments: '', next_meeting_date: parsedMeetingDate, creator: user
+            type: log.contactType, summary: finalContent, content: finalContent, attachments: '', next_meeting_date: parsedMeetingDate, creator: user
           };
           await sheetsClient.insert('interactions', interactionData);
         }
         
         if (log.hasNextMeeting) {
-          const finalMeetingType = log.nextMeetingType === '직접입력' ? log.customMeetingType : log.nextMeetingType;
+          let typeArr = Array.isArray(log.nextMeetingType) ? [...log.nextMeetingType] : [log.nextMeetingType];
+          if (typeArr.includes('직접입력')) {
+            typeArr = typeArr.filter(t => t !== '직접입력');
+            if (log.customMeetingType) typeArr.push(log.customMeetingType);
+          }
+          const finalMeetingType = typeArr.join(', ') || '미팅';
+          
           const meetingData = {
             id: 'temp_meet_' + Date.now() + '_' + i, client_id: log.contactId, client_name: clientName, date: parsedMeetingDate,
-            type: finalMeetingType || '미팅', result: '진행 예정 (준비 단계)', creator: user
+            type: finalMeetingType, result: '진행 예정 (준비 단계)', creator: user
           };
           await sheetsClient.insert('meetings', meetingData);
         }
@@ -299,7 +303,7 @@ const MeetingLog = () => {
     setContactQueue([]);
     setMultiLogs([]);
     setContent('');
-    setSummary('');
+    setAchievements([]);
     setActiveTab('list');
     fetchInteractions();
   };
@@ -386,211 +390,7 @@ const MeetingLog = () => {
     }
   };
 
-  // --- 1. 앱 내 직접 음성 녹음 제어 ---
-  const startRecording = async () => {
-    audioChunksRef.current = [];
-    setAudioBlob(null);
-    setAudioUrl('');
-    setUploadedFile(null); // 녹음 시 업로드 파일은 해제
 
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      toast.error('이 브라우저 혹은 기기는 마이크 녹음 기능을 지원하지 않습니다.');
-      return;
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
-      // Determine supported mime types for recording
-      let options = { mimeType: 'audio/webm' };
-      if (!MediaRecorder.isTypeSupported('audio/webm')) {
-        options = { mimeType: 'audio/mp4' }; // Fallback for Safari/iOS
-        if (!MediaRecorder.isTypeSupported('audio/mp4')) {
-          options = {}; // Browser default
-        }
-      }
-
-      const mediaRecorder = new MediaRecorder(stream, options);
-      mediaRecorderRef.current = mediaRecorder;
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data && event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = () => {
-        const mimeType = mediaRecorder.mimeType || 'audio/webm';
-        const blob = new Blob(audioChunksRef.current, { type: mimeType });
-        setAudioBlob(blob);
-        setAudioUrl(URL.createObjectURL(blob));
-        
-        // Stop all mic tracks to release hardware
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorder.start(250); // Get chunks every 250ms
-      setIsRecording(true);
-      setRecordingSeconds(0);
-      
-      // Timer setup
-      timerIntervalRef.current = setInterval(() => {
-        setRecordingSeconds(prev => prev + 1);
-      }, 1000);
-
-      toast.success('통화 녹음/메모를 기록하기 위해 마이크가 켜졌습니다.');
-    } catch (err) {
-      console.error('마이크 권한 획득 실패:', err);
-      toast.error('마이크 권한이 거부되었거나 마이크 기기를 사용할 수 없습니다.');
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      clearInterval(timerIntervalRef.current);
-      toast.success('녹음이 중지되었습니다. 파일이 준비되었습니다.');
-    }
-  };
-
-  const cancelRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-    }
-    clearInterval(timerIntervalRef.current);
-    setAudioBlob(null);
-    setAudioUrl('');
-    audioChunksRef.current = [];
-    toast('녹음이 취소되었습니다.');
-  };
-
-  // --- 2. 파일 업로드 핸들링 ---
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('audio/')) {
-      toast.error('오디오 파일(*.mp3, *.wav, *.m4a 등)만 업로드할 수 있습니다.');
-      return;
-    }
-
-    if (file.size > 20 * 1024 * 1024) { // 20MB 제한
-      toast.error('20MB 이하의 녹음 파일만 지원합니다.');
-      return;
-    }
-
-    setUploadedFile(file);
-    setAudioBlob(null); // 업로드 시 녹음 데이터는 해제
-    setAudioUrl(URL.createObjectURL(file));
-    toast.success(`'${file.name}' 녹음 파일이 로드되었습니다.`);
-  };
-
-  const removeAudioSource = () => {
-    setAudioBlob(null);
-    setUploadedFile(null);
-    setAudioUrl('');
-    toast('로딩된 음성 리소스가 지워졌습니다.');
-  };
-
-  const formatTime = (totalSeconds) => {
-    const mins = Math.floor(totalSeconds / 60);
-    const secs = totalSeconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  // --- 3. Gemini AI 스마트 분석 실행 ---
-  const handleAISummarize = async () => {
-    const hasAudio = audioBlob || uploadedFile;
-
-    try {
-      setIsSummarizing(true);
-      
-      if (hasAudio) {
-        toast.loading('Gemini AI가 녹음본 전체를 받아쓰기(STT)하고 요약을 만들고 있습니다...', { id: 'ai-analyze' });
-        
-        const audioSource = audioBlob || uploadedFile;
-        const base64Data = await fileToBase64(audioSource);
-        const mimeType = audioSource.type || 'audio/webm';
-        
-        // Call Multimodal Gemini audio analysis
-        const analysis = await analyzeAudioWithAI(base64Data, mimeType);
-        
-        // Auto fill form fields
-        if (analysis.transcription) {
-          setContent(analysis.transcription);
-        }
-        setSummary(analysis.summary);
-        
-        if (analysis.recommended_channel) {
-          setContactType(analysis.recommended_channel);
-        }
-        
-        if (analysis.material_sent) {
-          setMaterialSent(analysis.material_sent);
-        }
-
-        if (analysis.has_next_meeting) {
-          setHasNextMeeting(true);
-          if (analysis.next_meeting_date) {
-            setNextMeetingDate(analysis.next_meeting_date.replace(' ', 'T'));
-          }
-          if (analysis.meeting_type) {
-            if (['브리핑', '인사', '소개'].includes(analysis.meeting_type)) {
-              setNextMeetingType(analysis.meeting_type);
-            } else {
-              setNextMeetingType('직접입력');
-              setCustomMeetingType(analysis.meeting_type);
-            }
-          }
-        } else {
-          setHasNextMeeting(false);
-        }
-        
-        toast.success('녹음 음성 분석 완료! 입력 폼을 검토 후 저장해주세요.', { id: 'ai-analyze', duration: 4000 });
-      } else {
-        // Fallback: Text only analysis
-        if (!content.trim()) {
-          toast.error('녹음 파일이 없거나 텍스트 내용이 비어있습니다.');
-          setIsSummarizing(false);
-          return;
-        }
-
-        toast.loading('대화 내용 텍스트를 AI로 요약하는 중...', { id: 'ai-analyze' });
-        const analysis = await analyzeMeetingWithAI(content);
-        
-        setSummary(analysis.summary);
-        if (analysis.recommended_channel) setContactType(analysis.recommended_channel);
-        if (analysis.material_sent) setMaterialSent(analysis.material_sent);
-
-        if (analysis.has_next_meeting) {
-          setHasNextMeeting(true);
-          if (analysis.next_meeting_date) {
-            setNextMeetingDate(analysis.next_meeting_date.replace(' ', 'T'));
-          }
-          if (analysis.meeting_type) {
-            if (['브리핑', '인사', '소개'].includes(analysis.meeting_type)) {
-              setNextMeetingType(analysis.meeting_type);
-            } else {
-              setNextMeetingType('직접입력');
-              setCustomMeetingType(analysis.meeting_type);
-            }
-          }
-        } else {
-          setHasNextMeeting(false);
-        }
-        
-        toast.success('텍스트 분석 요약이 완료되었습니다.', { id: 'ai-analyze' });
-      }
-
-    } catch (error) {
-      console.error(error);
-      toast.error(error.message || 'AI 요약에 실패했습니다. API 키 및 파일 형식을 확인해주세요.', { id: 'ai-analyze' });
-    } finally {
-      setIsSummarizing(false);
-    }
-  };
 
   const handleSave = async () => {
     if (!user) {
@@ -617,7 +417,7 @@ const MeetingLog = () => {
       return;
     }
 
-    const hasInteractionContent = content.trim() || summary.trim() || materialSent || (window.meetingAttachments && window.meetingAttachments.length > 0);
+    const hasInteractionContent = content.trim() || materialSent || (window.meetingAttachments && window.meetingAttachments.length > 0) || achievements.length > 0;
 
     if (!hasInteractionContent && !hasNextMeeting) {
       toast.error('저장할 내용이나 일정이 없습니다.');
@@ -626,6 +426,15 @@ const MeetingLog = () => {
 
     const client = contacts.find(c => c.id === selectedContactId);
     const clientName = client ? `${client.company} - ${client.name}` : '알 수 없음';
+
+    let finalContent = content;
+    if (achievements.length > 0) {
+      const achievementLines = achievements.map(a => {
+        const detailStr = a.type === '상조' ? `${a.detail}구좌` : a.detail;
+        return `- 이름: ${a.name} | 연락처: ${a.phone} | 성과: ${a.type} (${detailStr})`;
+      }).join('\n');
+      finalContent += `\n\n[성과 기록]\n${achievementLines}`;
+    }
 
     // 1) Prepare data
     const tempId = 'temp_' + Date.now();
@@ -638,8 +447,8 @@ const MeetingLog = () => {
         client_name: clientName,
         date: new Date().toISOString().substring(0, 16).replace('T', ' '),
         type: contactType,
-        summary: summary || content,
-        content: content,
+        summary: finalContent,
+        content: finalContent,
         attachments: (window.meetingAttachments || []).join(','),
         next_meeting_date: parsedMeetingDate,
         creator: user
@@ -648,13 +457,19 @@ const MeetingLog = () => {
 
     let meetingData = null;
     if (hasNextMeeting) {
-      const finalMeetingType = nextMeetingType === '직접입력' ? customMeetingType : nextMeetingType;
+      let typeArr = Array.isArray(nextMeetingType) ? [...nextMeetingType] : [nextMeetingType];
+      if (typeArr.includes('직접입력')) {
+        typeArr = typeArr.filter(t => t !== '직접입력');
+        if (customMeetingType) typeArr.push(customMeetingType);
+      }
+      const finalMeetingType = typeArr.join(', ') || '미팅';
+      
       meetingData = {
         id: 'temp_meet_' + Date.now(),
         client_id: selectedContactId,
         client_name: clientName,
         date: parsedMeetingDate,
-        type: finalMeetingType || '미팅',
+        type: finalMeetingType,
         result: '진행 예정 (준비 단계)',
         creator: user
       };
@@ -680,7 +495,7 @@ const MeetingLog = () => {
     // Reset State Immediately
     sessionStorage.removeItem('meetingLogDraft');
     setContent('');
-    setSummary('');
+    setAchievements([]);
     setMaterialSent('');
     setHasNextMeeting(false);
     setNextMeetingDate('');
@@ -964,19 +779,27 @@ const MeetingLog = () => {
               </div>
               <div className="form-group">
                 <label>미팅 구분</label>
-                <div className="meeting-option-grid">
-                  {['브리핑', '인사', '소개', '직접입력'].map(opt => (
+                <div className="meeting-option-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+                  {['브리핑', '인사', '소개', '유투브 촬영', '직접입력'].map(opt => (
                     <button
                       key={opt}
                       type="button"
-                      className={`meeting-option-btn ${nextMeetingType === opt ? 'active' : ''}`}
-                      onClick={() => setNextMeetingType(opt)}
+                      className={`meeting-option-btn ${(Array.isArray(nextMeetingType) ? nextMeetingType : []).includes(opt) ? 'active' : ''}`}
+                      onClick={() => {
+                        const current = Array.isArray(nextMeetingType) ? nextMeetingType : [];
+                        if (current.includes(opt)) {
+                          setNextMeetingType(current.filter(t => t !== opt));
+                        } else {
+                          setNextMeetingType([...current, opt]);
+                        }
+                      }}
+                      style={{ fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}
                     >
                       {opt}
                     </button>
                   ))}
                 </div>
-                {nextMeetingType === '직접입력' && (
+                {(Array.isArray(nextMeetingType) ? nextMeetingType : []).includes('직접입력') && (
                   <input 
                     type="text" 
                     placeholder="직접 입력하세요..." 
@@ -1016,6 +839,72 @@ const MeetingLog = () => {
           value={content}
           onChange={(e) => setContent(e.target.value)}
         />
+      </div>
+
+      {/* 4.1 성과 추가 */}
+      <div style={{ marginBottom: '1.5rem', border: '1px solid var(--border-color)', padding: '1rem', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--bg-secondary)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+          <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+            🏆 성과 기록
+          </label>
+          <button type="button" className="btn-secondary" onClick={addAchievement} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
+            + 인원 추가
+          </button>
+        </div>
+        
+        {achievements.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {achievements.map((achieve, idx) => (
+              <div key={idx} style={{ padding: '0.75rem', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', position: 'relative' }}>
+                <button 
+                  type="button" 
+                  onClick={() => removeAchievement(idx)}
+                  style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', background: 'none', border: 'none', color: 'var(--danger-color)', cursor: 'pointer' }}
+                >
+                  <X size={14} />
+                </button>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+                  <div style={{ flex: 1, minWidth: '100px' }}>
+                    <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.2rem' }}>이름</label>
+                    <input type="text" value={achieve.name} onChange={(e) => updateAchievement(idx, 'name', e.target.value)} placeholder="이름" style={{ padding: '0.35rem', fontSize: '0.8rem', width: '100%' }} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: '120px' }}>
+                    <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.2rem' }}>연락처</label>
+                    <input type="text" value={achieve.phone} onChange={(e) => updateAchievement(idx, 'phone', e.target.value)} placeholder="연락처" style={{ padding: '0.35rem', fontSize: '0.8rem', width: '100%' }} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: '100px' }}>
+                    <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.2rem' }}>성과 유형</label>
+                    <select value={achieve.type} onChange={(e) => updateAchievement(idx, 'type', e.target.value)} style={{ padding: '0.35rem', fontSize: '0.8rem', width: '100%' }}>
+                      <option value="상조">상조</option>
+                      <option value="보험">보험</option>
+                      <option value="직접입력">직접입력</option>
+                    </select>
+                  </div>
+                  <div style={{ flex: 1.5, minWidth: '150px' }}>
+                    <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.2rem' }}>
+                      {achieve.type === '상조' ? '구좌 수' : '내용 입력'}
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                      <input 
+                        type={achieve.type === '상조' ? 'number' : 'text'} 
+                        value={achieve.detail} 
+                        onChange={(e) => updateAchievement(idx, 'detail', e.target.value)} 
+                        placeholder={achieve.type === '상조' ? "예: 2" : "내용 직접입력"} 
+                        style={{ padding: '0.35rem', fontSize: '0.8rem', flex: 1, width: '100%' }} 
+                      />
+                      {achieve.type === '상조' && <span style={{ fontSize: '0.8rem', flexShrink: 0 }}>구좌</span>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {achievements.length === 0 && (
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textAlign: 'center', padding: '0.5rem' }}>
+            입력된 성과가 없습니다.
+          </div>
+        )}
       </div>
 
       {/* 4.5. 파일 및 사진 첨부 */}
@@ -1089,91 +978,6 @@ const MeetingLog = () => {
         </div>
       </div>
 
-      {/* 5. 통화 녹음 파일 및 음성 메모 (그 아래에 위치!) */}
-      <div style={{ marginBottom: '1.5rem', border: '1px solid var(--border-color)', padding: '1rem', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--bg-secondary)' }}>
-        <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', display: 'block', marginBottom: '0.5rem' }}>
-          통화 녹음 파일 및 음성 메모
-        </label>
-        
-        <div className="audio-action-row">
-          {/* A. In-App Direct Recorder */}
-          {!isRecording ? (
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button 
-                type="button" 
-                className="btn-secondary" 
-                onClick={startRecording}
-                disabled={isSummarizing}
-                style={{ flex: 1 }}
-              >
-                <Mic size={16} style={{ color: 'var(--danger-color)' }} /> 즉시 음성 녹음 시작
-              </button>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', width: '100%' }}>
-              <div className="recording-status-box" style={{ flex: 1 }}>
-                <div className="recording-pulse-dot" />
-                <span>녹음 중... ({formatTime(recordingSeconds)})</span>
-              </div>
-              <button type="button" className="btn-primary" style={{ backgroundColor: 'var(--danger-color)' }} onClick={stopRecording}>
-                녹음 완료
-              </button>
-              <button type="button" className="btn-secondary" onClick={cancelRecording}>
-                취소
-              </button>
-            </div>
-          )}
-
-          {/* B. File Uploader */}
-          {!isRecording && !audioUrl && (
-            <div className="upload-box" style={{ marginTop: '0.5rem' }}>
-              <Upload size={20} style={{ display: 'block', margin: '0 auto 0.25rem', color: 'var(--text-secondary)' }} />
-              <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>영업/통화 녹음 파일 업로드</span>
-              <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>mp3, wav, webm, m4a 등 (20MB 이하)</p>
-              <input type="file" accept="audio/*" onChange={handleFileChange} />
-            </div>
-          )}
-          
-          {/* C. Audio Player Preview */}
-          {audioUrl && (
-            <div className="audio-preview-container" style={{ marginTop: '0.5rem' }}>
-              <div className="audio-preview-header">
-                <span>
-                  {uploadedFile ? `📁 업로드: ${uploadedFile.name}` : '🎙️ 직접 녹음된 오디오'}
-                </span>
-                <button type="button" style={{ color: 'var(--danger-color)', background: 'none', border: 'none', cursor: 'pointer' }} onClick={removeAudioSource}>
-                  <X size={16} />
-                </button>
-              </div>
-              <audio src={audioUrl} controls className="audio-preview-player" style={{ width: '100%', marginTop: '0.3rem' }} />
-            </div>
-          )}
-        </div>
-
-        {/* Smart AI completion trigger */}
-        <div style={{ marginTop: '1rem' }}>
-          <button 
-            type="button" 
-            className="btn-primary ai-btn" 
-            onClick={handleAISummarize} 
-            disabled={isSummarizing || (!content.trim() && !audioBlob && !uploadedFile)}
-            style={{ padding: '0.75rem', width: '100%' }}
-          >
-            <Wand2 size={18} /> {isSummarizing ? 'AI 분석 중...' : '음성 텍스트 변환 및 AI요약'}
-          </button>
-        </div>
-      </div>
-
-      {/* 6. Summary Block */}
-      <div className="form-group" style={{ marginTop: '1rem' }}>
-        <label>활동 결과 요약 (AI 자동 요약 내용)</label>
-        <textarea 
-          value={summary}
-          onChange={(e) => setSummary(e.target.value)}
-          placeholder="활동 결과 한줄 요약..."
-          style={{ width: '100%', minHeight: '60px', padding: '0.6rem 0.75rem', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.85rem', boxSizing: 'border-box', resize: 'vertical' }}
-        />
-      </div>
 
       {/* 7. Sticky Save Trigger */}
       <div style={{ 

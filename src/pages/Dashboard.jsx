@@ -50,7 +50,7 @@ const Dashboard = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newMeetClient, setNewMeetClient] = useState('');
   const [newMeetTime, setNewMeetTime] = useState('10:00');
-  const [newMeetType, setNewMeetType] = useState('브리핑');
+  const [newMeetType, setNewMeetType] = useState(['브리핑']);
   const [newMeetCustomType, setNewMeetCustomType] = useState('');
   const [isAddingMeeting, setIsAddingMeeting] = useState(false);
   const [routeSelectedIds, setRouteSelectedIds] = useState([]);
@@ -60,6 +60,7 @@ const Dashboard = () => {
   const [editMeetingId, setEditMeetingId] = useState(null);
   const [deleteTargetId, setDeleteTargetId] = useState(null);
   const [deletePassword, setDeletePassword] = useState('');
+  const [showStatsModal, setShowStatsModal] = useState(false);
 
   const handleDirectAddMeeting = async (e) => {
     e.preventDefault();
@@ -124,7 +125,12 @@ const Dashboard = () => {
         selectedClientName = `${savedContact.company} - ${savedContact.name}`;
       }
 
-      const finalType = newMeetType === '직접입력' ? newMeetCustomType : newMeetType;
+      let typeArr = Array.isArray(newMeetType) ? [...newMeetType] : [newMeetType];
+      if (typeArr.includes('직접입력')) {
+        typeArr = typeArr.filter(t => t !== '직접입력');
+        if (newMeetCustomType) typeArr.push(newMeetCustomType);
+      }
+      const finalType = typeArr.join(', ') || '미팅';
 
       const meetingData = {
         client_id: selectedClientId,
@@ -156,7 +162,7 @@ const Dashboard = () => {
       // Reset form
       setNewMeetClient('');
       setNewMeetTime('10:00');
-      setNewMeetType('브리핑');
+      setNewMeetType(['브리핑']);
       setNewMeetCustomType('');
       setEditMeetingId(null);
       setShowAddForm(false);
@@ -168,6 +174,12 @@ const Dashboard = () => {
   };
 
   const handleEditScheduleClick = (meet) => {
+    if (editMeetingId === meet.id) {
+      setEditMeetingId(null);
+      setShowAddForm(false);
+      return;
+    }
+    
     try {
       setEditMeetingId(meet.id);
       
@@ -182,56 +194,57 @@ const Dashboard = () => {
       setSelectedDate(dateObj);
       setNewMeetTime(format(dateObj, 'HH:mm'));
       
-      if (['브리핑', '인사', '계약', '서류전달', '기타'].includes(meet.type)) {
-        setNewMeetType(meet.type);
-        setNewMeetCustomType('');
+      const standardTypes = ['브리핑', '인사', '소개', '유투브 촬영'];
+      const types = meet.type ? meet.type.split(',').map(t => t.trim()) : [];
+      const extractedStandards = types.filter(t => standardTypes.includes(t));
+      const extractedCustoms = types.filter(t => !standardTypes.includes(t));
+      
+      if (extractedCustoms.length > 0) {
+        setNewMeetType([...extractedStandards, '직접입력']);
+        setNewMeetCustomType(extractedCustoms.join(', '));
       } else {
-        setNewMeetType('직접입력');
-        setNewMeetCustomType(meet.type);
+        setNewMeetType(extractedStandards.length > 0 ? extractedStandards : ['브리핑']);
+        setNewMeetCustomType('');
       }
       setShowAddForm(true);
-      // scroll to top smoothly
-      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (e) {
       toast.error('일정 데이터를 불러오는데 실패했습니다.');
     }
   };
 
-  const clickTimerRef = React.useRef(null);
-  
   const handleMeetingClick = async (meet) => {
-    if (clickTimerRef.current) {
-      clearTimeout(clickTimerRef.current);
-      clickTimerRef.current = null;
-      // Double click
-      handleEditScheduleClick(meet);
+    if (editMeetingId === meet.id) {
+      setEditMeetingId(null);
+      setShowAddForm(false);
+    }
+    
+    let newResult;
+    if (meet.result === '완료') {
+      newResult = '미팅 못함';
+    } else if (meet.result === '미팅 못함') {
+      newResult = '진행 예정';
     } else {
-      clickTimerRef.current = setTimeout(async () => {
-        clickTimerRef.current = null;
-        // Single click: toggle completion
-        const isCompleted = meet.result === '완료';
-        const newResult = isCompleted ? '진행 예정' : '완료';
-        
-        // Optimistic UI update
-        const updatedMeet = { ...meet, result: newResult };
-        setMeetings(prev => {
-          const next = prev.map(m => m.id === meet.id ? updatedMeet : m);
-          localStorage.setItem('sheet_v3_meetings', JSON.stringify(next));
-          return next;
-        });
+      newResult = '완료';
+    }
+    
+    // Optimistic UI update
+    const updatedMeet = { ...meet, result: newResult };
+    setMeetings(prev => {
+      const next = prev.map(m => m.id === meet.id ? updatedMeet : m);
+      localStorage.setItem('sheet_v3_meetings', JSON.stringify(next));
+      return next;
+    });
 
-        try {
-          await sheetsClient.update('meetings', updatedMeet);
-        } catch (err) {
-          toast.error('상태 업데이트 실패', { id: 'meet-complete' });
-          // Revert optimistic update
-          setMeetings(prev => {
-            const next = prev.map(m => m.id === meet.id ? meet : m);
-            localStorage.setItem('sheet_v3_meetings', JSON.stringify(next));
-            return next;
-          });
-        }
-      }, 150);
+    try {
+      await sheetsClient.update('meetings', updatedMeet);
+    } catch (err) {
+      toast.error('상태 업데이트 실패', { id: 'meet-complete' });
+      // Revert optimistic update
+      setMeetings(prev => {
+        const next = prev.map(m => m.id === meet.id ? meet : m);
+        localStorage.setItem('sheet_v3_meetings', JSON.stringify(next));
+        return next;
+      });
     }
   };
 
@@ -524,47 +537,194 @@ const Dashboard = () => {
     }
   };
 
+  const renderMeetingForm = () => (
+    <form onSubmit={handleDirectAddMeeting} style={{ padding: '0.75rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', backgroundColor: 'var(--bg-primary)' }}>
+      <h4 style={{ fontSize: '0.85rem', fontWeight: 700, margin: 0 }}>
+        {editMeetingId ? '일정 수정' : '새 미팅 일정 등록'}
+      </h4>
+      
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>대상자 (검색 또는 직접 입력) *</label>
+        <input 
+          list="client-list"
+          value={newMeetClient} 
+          onChange={(e) => setNewMeetClient(e.target.value)}
+          placeholder="대상자 검색 또는 직접 입력..."
+          style={{ width: '100%', padding: '0.35rem', fontSize: '0.85rem' }}
+          required
+        />
+        <datalist id="client-list">
+          {clients.map(c => (
+            <option key={c.id} value={c.company ? `${c.company} - ${c.name}` : c.name}></option>
+          ))}
+        </datalist>
+      </div>
+
+      <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+          <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>시간 (직접입력) *</label>
+          <input 
+            type="text" 
+            placeholder="예: 14:00" 
+            value={newMeetTime}
+            onChange={(e) => setNewMeetTime(e.target.value)}
+            style={{ width: '100%', padding: '0.35rem', fontSize: '0.85rem' }}
+            required
+          />
+        </div>
+
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+          <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>미팅 구분</label>
+          <div style={{ display: 'flex', gap: '0.2rem', flexWrap: 'wrap' }}>
+            {['브리핑', '인사', '소개', '유투브 촬영', '직접입력'].map(opt => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => {
+                  const current = Array.isArray(newMeetType) ? newMeetType : [];
+                  if (current.includes(opt)) {
+                    setNewMeetType(current.filter(t => t !== opt));
+                  } else {
+                    setNewMeetType([...current, opt]);
+                  }
+                }}
+                style={{ fontSize: '0.7rem', padding: '0.25rem 0.4rem', border: '1px solid var(--border-color)', borderRadius: '4px', background: (Array.isArray(newMeetType) ? newMeetType : []).includes(opt) ? 'var(--primary-color)' : 'white', color: (Array.isArray(newMeetType) ? newMeetType : []).includes(opt) ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {(Array.isArray(newMeetType) ? newMeetType : []).includes('직접입력') && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+          <input 
+            type="text" 
+            placeholder="미팅 유형 직접 입력..." 
+            value={newMeetCustomType}
+            onChange={(e) => setNewMeetCustomType(e.target.value)}
+            style={{ width: '100%', padding: '0.35rem', fontSize: '0.85rem' }}
+          />
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+        <button 
+          type="submit" 
+          className="btn-primary" 
+          style={{ flex: 1, padding: '0.4rem', fontSize: '0.85rem' }}
+          disabled={isAddingMeeting}
+        >
+          {editMeetingId ? '수정 완료' : '일정 등록 완료'}
+        </button>
+        {editMeetingId && (
+          <button
+            type="button"
+            className="btn-secondary"
+            style={{ flex: 1, padding: '0.4rem', fontSize: '0.85rem' }}
+            onClick={() => {
+              setEditMeetingId(null);
+              setShowAddForm(false);
+              setNewMeetClient('');
+              setNewMeetTime('10:00');
+              setNewMeetType('브리핑');
+              setNewMeetCustomType('');
+            }}
+          >
+            취소
+          </button>
+        )}
+      </div>
+    </form>
+  );
+
+  // Calculate Monthly Stats
+  const calculateStats = () => {
+    const thisMonthInteractions = interactions.filter(i => i.date && isSameMonth(parseISO(i.date.replace(' ', 'T')), currentDate));
+    const thisMonthMeetings = meetings.filter(m => m.date && isSameMonth(parseISO(m.date), currentDate));
+    
+    let sangjoCount = 0;
+    let bohumCount = 0;
+    
+    thisMonthInteractions.forEach(interaction => {
+      const content = interaction.content || '';
+      
+      const sangjoMatches = [...content.matchAll(/성과:\s*상조\s*\((\d+)구좌\)/g)];
+      sangjoMatches.forEach(match => {
+        sangjoCount += parseInt(match[1], 10);
+      });
+      
+      const bohumMatches = [...content.matchAll(/성과:\s*보험/g)];
+      bohumCount += bohumMatches.length;
+    });
+
+    let briefingCount = 0;
+    let insaCount = 0;
+    let youtubeCount = 0;
+    let meetingCount = thisMonthMeetings.length;
+
+    thisMonthMeetings.forEach(meeting => {
+      if (meeting.type && meeting.type.includes('브리핑')) briefingCount++;
+      if (meeting.type && meeting.type.includes('인사')) insaCount++;
+      if (meeting.type && meeting.type.includes('유투브 촬영')) youtubeCount++;
+    });
+
+    return { sangjoCount, bohumCount, briefingCount, insaCount, youtubeCount, meetingCount };
+  };
+
   return (
     <div className="dashboard-container">
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
         <h2 style={{ fontSize: '1.4rem', fontWeight: 700, margin: 0 }}>홈</h2>
         
-        {/* User Selection UI */}
-        <div style={{ backgroundColor: user ? 'var(--bg-secondary)' : '#fee2e2', padding: '0.5rem 1rem', borderRadius: 'var(--radius-md)', border: user ? '1px solid var(--border-color)' : '1px solid #f87171', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          {user ? (
-            <>
-              <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>현재 접속자: <span style={{ color: 'var(--primary-color)' }}>{user}</span></span>
-              <button 
-                className="btn-secondary" 
-                style={{ padding: '0.2rem 0.5rem', fontSize: '0.8rem' }}
-                onClick={() => changeUser('')}
-              >
-                변경
-              </button>
-            </>
-          ) : (
-            <>
-              <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#b91c1c' }}>사용자를 선택해주세요 *</span>
-              <select 
-                value={user || ''} 
-                onChange={(e) => {
-                  if (e.target.value === '직접입력') {
-                    const customUser = window.prompt("사용자 이름을 입력하세요:");
-                    if (customUser) changeUser(customUser);
-                  } else if (e.target.value) {
-                    changeUser(e.target.value);
-                  }
-                }}
-                style={{ padding: '0.3rem', borderRadius: '4px', border: '1px solid #ccc' }}
-              >
-                <option value="" disabled>-- 사용자 선택 --</option>
-                <option value="김학민">김학민</option>
-                <option value="김진욱">김진욱</option>
-                <option value="직접입력">직접입력</option>
-              </select>
-            </>
-          )}
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          {/* User Selection UI */}
+          <div style={{ backgroundColor: user ? 'var(--bg-secondary)' : '#fee2e2', padding: '0.5rem 1rem', borderRadius: 'var(--radius-md)', border: user ? '1px solid var(--border-color)' : '1px solid #f87171', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {user ? (
+              <>
+                <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>현재 접속자: <span style={{ color: 'var(--primary-color)' }}>{user}</span></span>
+                <button 
+                  className="btn-secondary" 
+                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.8rem' }}
+                  onClick={() => changeUser('')}
+                >
+                  변경
+                </button>
+              </>
+            ) : (
+              <>
+                <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#b91c1c' }}>사용자를 선택해주세요 *</span>
+                <select 
+                  value={user || ''} 
+                  onChange={(e) => {
+                    if (e.target.value === '직접입력') {
+                      const customUser = window.prompt("사용자 이름을 입력하세요:");
+                      if (customUser) changeUser(customUser);
+                    } else if (e.target.value) {
+                      changeUser(e.target.value);
+                    }
+                  }}
+                  style={{ padding: '0.3rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                >
+                  <option value="" disabled>-- 사용자 선택 --</option>
+                  <option value="김학민">김학민</option>
+                  <option value="김진욱">김진욱</option>
+                  <option value="직접입력">직접입력</option>
+                </select>
+              </>
+            )}
+          </div>
+
+          <button 
+            className="btn-secondary" 
+            style={{ padding: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            onClick={() => setShowStatsModal(true)}
+            title="월간 성과 대시보드"
+          >
+            <CalendarIcon size={20} />
+          </button>
         </div>
       </div>
 
@@ -633,99 +793,8 @@ const Dashboard = () => {
           </button>
         </div>
 
-        {/* 직접 등록/수정 Form */}
-        {showAddForm && (
-          <form onSubmit={handleDirectAddMeeting} style={{ padding: '0.75rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', backgroundColor: 'var(--bg-primary)' }}>
-            <h4 style={{ fontSize: '0.85rem', fontWeight: 700, margin: 0 }}>
-              {editMeetingId ? '일정 수정' : '새 미팅 일정 등록'}
-            </h4>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>대상자 (검색 또는 직접 입력) *</label>
-              <input 
-                list="client-list"
-                value={newMeetClient} 
-                onChange={(e) => setNewMeetClient(e.target.value)}
-                placeholder="대상자 검색 또는 직접 입력..."
-                style={{ width: '100%', padding: '0.35rem', fontSize: '0.85rem' }}
-                required
-              />
-              <datalist id="client-list">
-                {clients.map(c => (
-                  <option key={c.id} value={c.company ? `${c.company} - ${c.name}` : c.name}></option>
-                ))}
-              </datalist>
-            </div>
-
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>시간 (직접입력) *</label>
-                <input 
-                  type="text" 
-                  placeholder="예: 14:00" 
-                  value={newMeetTime}
-                  onChange={(e) => setNewMeetTime(e.target.value)}
-                  style={{ width: '100%', padding: '0.35rem', fontSize: '0.85rem' }}
-                  required
-                />
-              </div>
-
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>미팅 구분</label>
-                <select 
-                  value={newMeetType} 
-                  onChange={(e) => setNewMeetType(e.target.value)}
-                  style={{ width: '100%', padding: '0.35rem', fontSize: '0.85rem' }}
-                >
-                  <option value="브리핑">브리핑</option>
-                  <option value="인사">인사</option>
-                  <option value="소개">소개</option>
-                  <option value="직접입력">직접입력</option>
-                </select>
-              </div>
-            </div>
-
-            {newMeetType === '직접입력' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                <input 
-                  type="text" 
-                  placeholder="미팅 유형 직접 입력..." 
-                  value={newMeetCustomType}
-                  onChange={(e) => setNewMeetCustomType(e.target.value)}
-                  style={{ width: '100%', padding: '0.35rem', fontSize: '0.85rem' }}
-                />
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
-              <button 
-                type="submit" 
-                className="btn-primary" 
-                style={{ flex: 1, padding: '0.4rem', fontSize: '0.85rem' }}
-                disabled={isAddingMeeting}
-              >
-                {editMeetingId ? '수정 완료' : '일정 등록 완료'}
-              </button>
-              {editMeetingId && (
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  style={{ flex: 1, padding: '0.4rem', fontSize: '0.85rem' }}
-                  onClick={() => {
-                    setEditMeetingId(null);
-                    setShowAddForm(false);
-                    setNewMeetClient('');
-                    setNewMeetTime('10:00');
-                    setNewMeetType('브리핑');
-                    setNewMeetCustomType('');
-                  }}
-                >
-                  취소
-                </button>
-              )}
-            </div>
-          </form>
-        )}
+        {/* 직접 등록/수정 Form (새 등록일 때만 상단에 표시) */}
+        {showAddForm && !editMeetingId && renderMeetingForm()}
         
         {loading ? (
           <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>데이터 로드 중...</div>
@@ -734,9 +803,12 @@ const Dashboard = () => {
             {selectedDateMeetings.map(meet => {
               const client = getClientContact(meet.client_id);
               const isCompleted = meet.result === '완료';
+              const isMissed = meet.result === '미팅 못함';
               const cardStyle = isCompleted 
                 ? { backgroundColor: '#e8f5e9', border: '2px solid #4caf50', opacity: 0.8 }
-                : (editMeetingId === meet.id ? { backgroundColor: '#fee2e2', border: '2px solid #ef4444' } : {});
+                : isMissed
+                  ? { backgroundColor: '#fee2e2', border: '2px solid #ef4444' }
+                  : (editMeetingId === meet.id ? { backgroundColor: '#fee2e2', border: '2px solid #ef4444' } : {});
 
               return (
                 <div 
@@ -843,6 +915,11 @@ const Dashboard = () => {
                       </div>
                     )}
                   </div>
+                  {editMeetingId === meet.id && (
+                    <div style={{ marginTop: '0.75rem', paddingTop: '0.5rem', borderTop: '1px dashed var(--border-color)' }}>
+                      {renderMeetingForm()}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -965,24 +1042,72 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* Stats Grid - 한줄로 제일 하단에 위치 */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginTop: '1rem' }}>
-        <div className="stat-card" style={{ padding: '0.75rem 0.5rem' }}>
-          <div className="stat-icon" style={{ padding: '0.4rem', marginBottom: 0 }}><Users size={16} /></div>
-          <div className="stat-value" style={{ fontSize: '1.25rem' }}>{totalClients}</div>
-          <div className="stat-label" style={{ fontSize: '0.7rem' }}>등록 고객 수</div>
+      {/* Monthly Stats Modal */}
+      {showStatsModal && (
+        <div className="modal-overlay" onClick={() => setShowStatsModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px', width: '90%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, fontSize: '1.2rem' }}>
+                <CalendarIcon size={20} style={{ color: 'var(--primary-color)' }} />
+                {format(currentDate, 'yyyy년 MM월')} 성과
+              </h3>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button className="btn-secondary" style={{ padding: '0.25rem' }} onClick={handlePrevMonth}>
+                  <ChevronLeft size={18} />
+                </button>
+                <button className="btn-secondary" style={{ padding: '0.25rem' }} onClick={handleNextMonth}>
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+            </div>
+            
+            {(() => {
+              const stats = calculateStats();
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ backgroundColor: 'var(--bg-secondary)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                    <h4 style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>🎯 실적 성과</h4>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <span style={{ fontWeight: 600 }}>상조</span>
+                      <span style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--primary-color)' }}>{stats.sangjoCount} <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>구좌</span></span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 600 }}>보험</span>
+                      <span style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--accent-color)' }}>{stats.bohumCount} <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>개</span></span>
+                    </div>
+                  </div>
+                  
+                  <div style={{ backgroundColor: 'var(--bg-secondary)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                    <h4 style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>🤝 미팅 활동</h4>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <span>총 미팅</span>
+                      <span style={{ fontWeight: 700 }}>{stats.meetingCount} <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>번</span></span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <span>브리핑</span>
+                      <span style={{ fontWeight: 700 }}>{stats.briefingCount} <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>번</span></span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <span>인사</span>
+                      <span style={{ fontWeight: 700 }}>{stats.insaCount} <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>번</span></span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>유투브 촬영</span>
+                      <span style={{ fontWeight: 700 }}>{stats.youtubeCount} <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>번</span></span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+            
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+              <button className="btn-secondary" onClick={() => setShowStatsModal(false)}>
+                닫기
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="stat-card" style={{ padding: '0.75rem 0.5rem' }}>
-          <div className="stat-icon" style={{ color: 'var(--success-color)', padding: '0.4rem', marginBottom: 0 }}><CalendarIcon size={16} /></div>
-          <div className="stat-value" style={{ fontSize: '1.25rem' }}>{todayMeetingsCount}</div>
-          <div className="stat-label" style={{ fontSize: '0.7rem' }}>오늘 미팅</div>
-        </div>
-        <div className="stat-card" style={{ padding: '0.75rem 0.5rem' }}>
-          <div className="stat-icon" style={{ color: 'var(--accent-color)', padding: '0.4rem', marginBottom: 0 }}><CheckSquare size={16} /></div>
-          <div className="stat-value" style={{ fontSize: '1.25rem' }}>{thisMonthMeetingsCount}</div>
-          <div className="stat-label" style={{ fontSize: '0.7rem' }}>이번 달 미팅</div>
-        </div>
-      </div>
+      )}
 
       {/* Password Modal for Deletion */}
       {deleteTargetId && (

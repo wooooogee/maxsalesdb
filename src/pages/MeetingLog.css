@@ -166,9 +166,9 @@
 }
 
 .meeting-option-btn.active {
-  background-color: var(--accent-color);
+  background-color: var(--primary-color);
   color: white;
-  border-color: var(--accent-color);
+  border-color: var(--primary-color);
 }
 
 /* Audio Player and Upload styles */
