@@ -119,6 +119,13 @@ const Chat = () => {
 
   useEffect(() => {
     scrollToBottom();
+    if (messages && messages.length > 0) {
+      const latest = messages[messages.length - 1];
+      if (latest && !String(latest.id).startsWith('temp_')) {
+        localStorage.setItem('last_read_chat_id', latest.id);
+        window.dispatchEvent(new CustomEvent('chat_badge_update', { detail: { hasNew: false } }));
+      }
+    }
   }, [messages]);
 
   const scrollToBottom = () => {

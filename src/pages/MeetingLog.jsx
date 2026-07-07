@@ -501,7 +501,6 @@ const MeetingLog = () => {
     setNextMeetingDate('');
     setSelectedContactId('');
     window.meetingAttachments = [];
-    removeAudioSource();
 
     // 3) Background Save
     try {
