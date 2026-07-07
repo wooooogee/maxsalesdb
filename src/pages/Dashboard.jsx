@@ -56,11 +56,57 @@ const Dashboard = () => {
   const [routeSelectedIds, setRouteSelectedIds] = useState([]);
   const [optimizedOrder, setOptimizedOrder] = useState([]);
   const [draggedRouteId, setDraggedRouteId] = useState(null);
+  const [cancelUnavailConfirm, setCancelUnavailConfirm] = useState(null);
   
   const [editMeetingId, setEditMeetingId] = useState(null);
   const [deleteTargetId, setDeleteTargetId] = useState(null);
   const [deletePassword, setDeletePassword] = useState('');
   const [showStatsModal, setShowStatsModal] = useState(false);
+
+  // 일정 불가 상태
+  const [emptyDayActionDate, setEmptyDayActionDate] = useState(null);
+  const [unavailabilityLoading, setUnavailabilityLoading] = useState(false);
+
+  const handleSetUnavailable = async (dateObj) => {
+    try {
+      setUnavailabilityLoading(true);
+      toast.loading('일정 불가 상태로 설정하는 중...', { id: 'unavail' });
+      const meetingData = {
+        client_id: 'unavailable_client',
+        client_name: '일정 불가(휴무)',
+        date: format(dateObj, 'yyyy-MM-dd') + ' 00:00',
+        type: '일정 불가',
+        result: '일정 불가'
+      };
+      const saved = await sheetsClient.insert('meetings', meetingData);
+      setMeetings(prev => {
+        const next = [...prev, saved];
+        localStorage.setItem('sheet_v3_meetings', JSON.stringify(next));
+        return next;
+      });
+      toast.success('일정 불가 상태로 설정되었습니다.', { id: 'unavail' });
+      setEmptyDayActionDate(null);
+    } catch (err) {
+      toast.error('설정 실패: ' + err.message, { id: 'unavail' });
+    } finally {
+      setUnavailabilityLoading(false);
+    }
+  };
+
+  const handleRemoveUnavailable = async (meetingId) => {
+    try {
+      toast.loading('일정 불가 상태 해제 중...', { id: 'unavail-remove' });
+      await sheetsClient.delete('meetings', meetingId);
+      setMeetings(prev => {
+        const next = prev.filter(m => m.id !== meetingId);
+        localStorage.setItem('sheet_v3_meetings', JSON.stringify(next));
+        return next;
+      });
+      toast.success('일정 불가 상태가 해제되었습니다.', { id: 'unavail-remove' });
+    } catch (err) {
+      toast.error('해제 실패: ' + err.message, { id: 'unavail-remove' });
+    }
+  };
 
   const handleDirectAddMeeting = async (e) => {
     e.preventDefault();
@@ -384,6 +430,7 @@ const Dashboard = () => {
   };
 
   const selectedDateMeetings = getDayMeetings(selectedDate);
+  const isSelectedDateUnavailable = selectedDateMeetings.some(m => m.type === '일정 불가');
   
   // Statistics
   const totalClients = clients.length;
@@ -755,16 +802,26 @@ const Dashboard = () => {
             const dayMeetings = getDayMeetings(day);
             const isToday = isSameDay(day, new Date());
             const isSelected = isSameDay(day, selectedDate);
-            const isCurrentMonth = isSameMonth(day, currentDate);
+            const isUnavailable = dayMeetings.some(m => m.type === '일정 불가');
             
             return (
               <div 
                 key={day.toString()} 
-                className={`calendar-cell ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''} ${!isCurrentMonth ? 'other-month' : ''}`}
-                onClick={() => setSelectedDate(day)}
+                className={`calendar-cell ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''} ${!isSameMonth(day, currentDate) ? 'other-month' : ''} ${isUnavailable ? 'unavailable' : ''}`}
+                onClick={() => {
+                  setSelectedDate(day);
+                  if (isUnavailable) {
+                    const unavailMeeting = dayMeetings.find(m => m.type === '일정 불가');
+                    setCancelUnavailConfirm(unavailMeeting);
+                  } else if (dayMeetings.length === 0) {
+                    setEmptyDayActionDate(day);
+                  } else {
+                    setEmptyDayActionDate(null);
+                  }
+                }}
               >
                 <span>{format(day, 'd')}</span>
-                {dayMeetings.length > 0 && (
+                {dayMeetings.length > 0 && !isUnavailable && (
                   <div style={{ display: 'flex', gap: '2px', justifyContent: 'center' }}>
                     {dayMeetings.slice(0, 3).map((_, mIdx) => (
                       <div key={mIdx} className="calendar-event-dot" />
@@ -781,24 +838,25 @@ const Dashboard = () => {
       <div className="schedule-section">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
           <h3 style={{ fontSize: '1.05rem', fontWeight: 600, margin: 0 }}>
-            {format(selectedDate, 'MM월 dd일')} 미팅 일정 ({selectedDateMeetings.length}건)
+            {format(selectedDate, 'MM월 dd일')} 미팅 일정 ({isSelectedDateUnavailable ? '불가' : selectedDateMeetings.length + '건'})
           </h3>
           <button 
             type="button" 
             className="btn-secondary" 
             style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
             onClick={() => setShowAddForm(!showAddForm)}
+            disabled={isSelectedDateUnavailable}
           >
             {showAddForm ? '닫기' : '일정 직접 추가'}
           </button>
         </div>
 
         {/* 직접 등록/수정 Form (새 등록일 때만 상단에 표시) */}
-        {showAddForm && !editMeetingId && renderMeetingForm()}
+        {showAddForm && !editMeetingId && !isSelectedDateUnavailable && renderMeetingForm()}
         
         {loading ? (
           <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>데이터 로드 중...</div>
-        ) : selectedDateMeetings.length > 0 ? (
+        ) : selectedDateMeetings.length > 0 && !isSelectedDateUnavailable ? (
           <div className="schedule-list">
             {selectedDateMeetings.map(meet => {
               const client = getClientContact(meet.client_id);
@@ -924,12 +982,20 @@ const Dashboard = () => {
               );
             })}
           </div>
+        ) : isSelectedDateUnavailable ? (
+          <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
+            <p style={{ fontWeight: 'bold', color: 'var(--danger-color)', fontSize: '1rem', margin: 0 }}>
+              이 날짜는 일정 불가(휴무) 상태입니다. 달력에서 다시 눌러 해제하세요.
+            </p>
+          </div>
         ) : (
-          <div style={{ textAlign: 'center', padding: '1rem 0', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-            이 날짜에는 등록된 미팅 일정이 없습니다.
+          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
+            선택한 날짜에 예정된 미팅이 없습니다.
           </div>
         )}
       </div>
+
+
 
       {/* AI 동선 최적화 및 길찾기 섹션 */}
       {visitMeetings.length > 0 && (
@@ -1128,6 +1194,76 @@ const Dashboard = () => {
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button className="btn-secondary" style={{ flex: 1 }} onClick={() => { setDeleteTargetId(null); setDeletePassword(''); }}>취소</button>
               <button className="btn-primary" style={{ flex: 1, backgroundColor: '#ef4444' }} onClick={handleDeleteMeeting}>확인</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {emptyDayActionDate && (
+        <div className="modal-overlay" style={{ zIndex: 9999, alignItems: 'center' }}>
+          <div style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', width: '90%', maxWidth: '320px', padding: '2rem 1.5rem', boxSizing: 'border-box' }}>
+            <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem', fontWeight: 700, color: 'var(--text-primary)', textAlign: 'center' }}>
+              {format(emptyDayActionDate, 'MM월 dd일')}
+            </h3>
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1.5rem', textAlign: 'center', lineHeight: '1.5' }}>
+              선택하신 날짜에 등록된 일정이 없습니다.<br/>작업을 선택해 주세요.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <button 
+                className="btn-primary" 
+                style={{ width: '100%', padding: '0.8rem' }}
+                onClick={() => {
+                  setEmptyDayActionDate(null);
+                  setShowAddForm(true);
+                }}
+              >
+                새 일정 추가
+              </button>
+              <button 
+                className="btn-secondary" 
+                style={{ width: '100%', padding: '0.8rem', backgroundColor: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5' }}
+                onClick={() => handleSetUnavailable(emptyDayActionDate)}
+                disabled={unavailabilityLoading}
+              >
+                일정 불가(휴무)로 설정
+              </button>
+              <button 
+                className="btn-secondary" 
+                style={{ width: '100%', padding: '0.8rem', marginTop: '0.5rem' }}
+                onClick={() => setEmptyDayActionDate(null)}
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* 휴무 해제 확인 모달 */}
+      {cancelUnavailConfirm && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '320px', textAlign: 'center', padding: '1.5rem' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1.1rem' }}>일정 불가 해제</h3>
+            <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', marginBottom: '1.5rem', lineHeight: '1.4' }}>
+              선택하신 날짜의 일정 불가(휴무) 상태를<br/>해제하시겠습니까?
+            </p>
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+              <button 
+                className="btn-secondary" 
+                onClick={() => setCancelUnavailConfirm(null)}
+                style={{ flex: 1 }}
+              >
+                취소
+              </button>
+              <button 
+                className="btn-primary" 
+                style={{ flex: 1, backgroundColor: 'var(--danger-color)' }}
+                onClick={() => {
+                  handleRemoveUnavailable(cancelUnavailConfirm.id);
+                  setCancelUnavailConfirm(null);
+                }}
+              >
+                해제하기
+              </button>
             </div>
           </div>
         </div>

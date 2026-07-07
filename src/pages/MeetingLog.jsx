@@ -13,7 +13,8 @@ import {
   MapPin,
   Building,
   ChevronRight,
-  ChevronLeft
+  ChevronLeft,
+  Star
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useUser } from '../UserContext';
@@ -38,6 +39,7 @@ const MeetingLog = () => {
   const navigate = useNavigate();
   const { user } = useUser();
   const [content, setContent] = useState('');
+  const [needsRecheck, setNeedsRecheck] = useState(false);
   
   // 성과 관리
   const [achievements, setAchievements] = useState([]);
@@ -144,7 +146,7 @@ const MeetingLog = () => {
       setSelectedContactId(ids[0]);
       
       const initialLogs = ids.map(id => ({
-        contactId: id, content: '', contactType: location.state?.defaultContactType || '전화', materialSent: '', hasNextMeeting: false,
+        contactId: id, content: '', needsRecheck: false, contactType: location.state?.defaultContactType || '전화', materialSent: '', hasNextMeeting: false,
         nextMeetingDateOnly: getLocalDateString(), nextMeetingTimeOnly: '10:00', nextMeetingType: ['브리핑'], customMeetingType: '', achievements: []
       }));
       setMultiLogs(initialLogs);
@@ -162,6 +164,7 @@ const MeetingLog = () => {
           setCurrentQueueIndex(draft.currentQueueIndex);
           setMultiLogs(draft.multiLogs);
           setContent(draft.content);
+          setNeedsRecheck(draft.needsRecheck || false);
           setContactType(draft.contactType);
           setMaterialSent(draft.materialSent);
           setHasNextMeeting(draft.hasNextMeeting);
@@ -181,7 +184,7 @@ const MeetingLog = () => {
   const saveCurrentToLogs = () => {
     const newLogs = [...multiLogs];
     newLogs[currentQueueIndex] = {
-      contactId: selectedContactId, content, contactType, materialSent, hasNextMeeting,
+      contactId: selectedContactId, content, needsRecheck, contactType, materialSent, hasNextMeeting,
       nextMeetingDateOnly, nextMeetingTimeOnly, nextMeetingType, customMeetingType, achievements
     };
     return newLogs;
@@ -190,13 +193,13 @@ const MeetingLog = () => {
   useEffect(() => {
     if (!selectedContactId && contactQueue.length === 0) return;
     const draft = {
-      selectedContactId, content, contactType, materialSent, hasNextMeeting,
+      selectedContactId, content, needsRecheck, contactType, materialSent, hasNextMeeting,
       nextMeetingDateOnly, nextMeetingTimeOnly, nextMeetingType, customMeetingType,
       contactQueue, currentQueueIndex, multiLogs: saveCurrentToLogs(), activeTab, achievements
     };
     sessionStorage.setItem('meetingLogDraft', JSON.stringify(draft));
   }, [
-    selectedContactId, content, contactType, materialSent, hasNextMeeting,
+    selectedContactId, content, needsRecheck, contactType, materialSent, hasNextMeeting,
     nextMeetingDateOnly, nextMeetingTimeOnly, nextMeetingType, customMeetingType,
     contactQueue, currentQueueIndex, activeTab, multiLogs, achievements
   ]);
@@ -206,6 +209,7 @@ const MeetingLog = () => {
     if (!log) return;
     setSelectedContactId(log.contactId);
     setContent(log.content);
+    setNeedsRecheck(log.needsRecheck || false);
     setContactType(log.contactType);
     setMaterialSent(log.materialSent);
     setHasNextMeeting(log.hasNextMeeting);
@@ -241,10 +245,33 @@ const MeetingLog = () => {
     
     const finalLogs = [...multiLogs];
     finalLogs[currentQueueIndex] = {
-      contactId: selectedContactId, content, contactType, materialSent, hasNextMeeting,
+      contactId: selectedContactId, content, needsRecheck, contactType, materialSent, hasNextMeeting,
       nextMeetingDateOnly, nextMeetingTimeOnly, nextMeetingType, customMeetingType, achievements
     };
     setMultiLogs(finalLogs);
+
+    const checkDateUnavailability = (dateStr) => {
+      if (!dateStr) return false;
+      try {
+        const cachedMeetings = JSON.parse(localStorage.getItem('sheet_v3_meetings') || '[]');
+        const targetDateStr = dateStr.split(' ')[0];
+        return cachedMeetings.some(m => m.type === '일정 불가' && m.date.startsWith(targetDateStr));
+      } catch (e) {
+        return false;
+      }
+    };
+
+    // 검증 단계
+    for (let i = 0; i < finalLogs.length; i++) {
+      const log = finalLogs[i];
+      if (!log.contactId) continue;
+      if (log.hasNextMeeting && log.nextMeetingDateOnly) {
+        const parsed = parseKoreanDateTime(`${log.nextMeetingDateOnly} ${log.nextMeetingTimeOnly}`);
+        if (checkDateUnavailability(parsed)) {
+          return toast.error(`${i + 1}번째 대상자의 미팅 날짜가 일정 불가(휴무) 상태입니다.`);
+        }
+      }
+    }
 
     toast.loading('다중 기록을 순차적으로 저장하는 중...', { id: 'batch-save' });
 
@@ -274,7 +301,8 @@ const MeetingLog = () => {
           const tempId = 'temp_' + Date.now() + '_' + i;
           const interactionData = {
             id: tempId, client_id: log.contactId, client_name: clientName, date: new Date().toISOString().substring(0, 16).replace('T', ' '),
-            type: log.contactType, summary: finalContent, content: finalContent, attachments: '', next_meeting_date: parsedMeetingDate, creator: user
+            type: log.contactType, summary: finalContent, content: finalContent, attachments: '', next_meeting_date: parsedMeetingDate, creator: user,
+            needs_recheck: log.needsRecheck
           };
           await sheetsClient.insert('interactions', interactionData);
         }
@@ -303,6 +331,7 @@ const MeetingLog = () => {
     setContactQueue([]);
     setMultiLogs([]);
     setContent('');
+    setNeedsRecheck(false);
     setAchievements([]);
     setActiveTab('list');
     fetchInteractions();
@@ -417,6 +446,20 @@ const MeetingLog = () => {
       return;
     }
 
+    if (hasNextMeeting && isValidFormat) {
+      try {
+        const cachedMeetings = JSON.parse(localStorage.getItem('sheet_v3_meetings') || '[]');
+        const targetDateStr = parsedMeetingDate.split(' ')[0];
+        const isUnavailable = cachedMeetings.some(m => m.type === '일정 불가' && m.date.startsWith(targetDateStr));
+        if (isUnavailable) {
+          toast.error('선택하신 날짜는 일정 불가(휴무) 상태이므로 일정을 추가할 수 없습니다.');
+          return;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
     const hasInteractionContent = content.trim() || materialSent || (window.meetingAttachments && window.meetingAttachments.length > 0) || achievements.length > 0;
 
     if (!hasInteractionContent && !hasNextMeeting) {
@@ -451,7 +494,8 @@ const MeetingLog = () => {
         content: finalContent,
         attachments: (window.meetingAttachments || []).join(','),
         next_meeting_date: parsedMeetingDate,
-        creator: user
+        creator: user,
+        needs_recheck: needsRecheck
       };
     }
 
@@ -495,6 +539,7 @@ const MeetingLog = () => {
     // Reset State Immediately
     sessionStorage.removeItem('meetingLogDraft');
     setContent('');
+    setNeedsRecheck(false);
     setAchievements([]);
     setMaterialSent('');
     setHasNextMeeting(false);
@@ -831,7 +876,18 @@ const MeetingLog = () => {
 
       {/* 4. 소통 내용 전문 */}
       <div className="form-group" style={{ marginBottom: '1.5rem' }}>
-        <label>미팅 내용</label>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+          <label style={{ margin: 0 }}>미팅 내용</label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, color: needsRecheck ? '#d32f2f' : 'var(--text-secondary)' }}>
+            <input 
+              type="checkbox" 
+              checked={needsRecheck} 
+              onChange={(e) => setNeedsRecheck(e.target.checked)} 
+              style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+            />
+            <Star size={14} fill={needsRecheck ? '#ffb300' : 'none'} color={needsRecheck ? '#ffb300' : 'currentColor'} className={needsRecheck ? 'blink-star' : ''} /> 다시확인 필요 (별표시)
+          </label>
+        </div>
         <textarea 
           rows="10" 
           placeholder=""

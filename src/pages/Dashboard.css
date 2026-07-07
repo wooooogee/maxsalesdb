@@ -231,3 +231,12 @@
     font-size: 0.8rem;
   }
 }
+
+.calendar-cell.unavailable {
+  background-color: #f1f5f9;
+  color: #94a3b8;
+  background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.03) 10px, rgba(0,0,0,0.03) 20px);
+}
+.calendar-cell.unavailable:hover {
+  background-color: #e2e8f0;
+}

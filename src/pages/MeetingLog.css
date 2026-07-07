@@ -265,4 +265,16 @@
   color: var(--accent-color) !important;
 }
 
+.blink-star {
+  color: #ffb300;
+  text-shadow: 0 0 5px rgba(255, 179, 0, 0.5);
+  animation: star-blink 1.5s infinite;
+  display: inline-flex;
+  align-items: center;
+}
 
+@keyframes star-blink {
+  0% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(1.1); }
+  100% { opacity: 1; transform: scale(1); }
+}
