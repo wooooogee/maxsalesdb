@@ -11,9 +11,11 @@ const MOCK_MESSAGES = [];
 
 const Chat = () => {
   const { user } = useUser();
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(() => {
+    try { const cached = localStorage.getItem('sheet_v3_chat_messages'); return cached ? JSON.parse(cached) : []; } catch(e){ return []; }
+  });
   const [newMessage, setNewMessage] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !localStorage.getItem('sheet_v3_chat_messages'));
   const [searchTerm, setSearchTerm] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);

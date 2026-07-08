@@ -53,10 +53,11 @@ async function fetchContacts(setContacts, setLoading) {
 const Contacts = () => {
   const { user } = useUser();
   const navigate = useNavigate();
-  const [contacts, setContacts] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [contacts, setContacts] = useState(() => {
+    try { const cached = localStorage.getItem('sheet_v3_clients'); return cached ? JSON.parse(cached) : []; } catch(e){ return []; }
+  });
+  const [loading, setLoading] = useState(() => !localStorage.getItem('sheet_v3_clients'));
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [expandedContactId, setExpandedContactId] = useState(null);
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(() => {
     return sessionStorage.getItem('contacts_multi_select') === 'true';

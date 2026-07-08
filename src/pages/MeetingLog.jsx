@@ -63,12 +63,17 @@ const MeetingLog = () => {
   const [contactQueue, setContactQueue] = useState([]);
   const [currentQueueIndex, setCurrentQueueIndex] = useState(0);
   const [multiLogs, setMultiLogs] = useState([]);
-  const [interactions, setInteractions] = useState([]);
-  const [loadingInteractions, setLoadingInteractions] = useState(false);
+  const [interactions, setInteractions] = useState(() => {
+    try { const cached = localStorage.getItem('sheet_v3_interactions'); return cached ? JSON.parse(cached) : []; } catch(e){ return []; }
+  });
+  const [loadingInteractions, setLoadingInteractions] = useState(() => !localStorage.getItem('sheet_v3_interactions'));
   const [expandedInteractionId, setExpandedInteractionId] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
   
   // Contacts list
-  const [contacts, setContacts] = useState([]);
+  const [contacts, setContacts] = useState(() => {
+    try { const cached = localStorage.getItem('sheet_v3_clients'); return cached ? JSON.parse(cached) : []; } catch(e){ return []; }
+  });
   const [selectedContactId, setSelectedContactId] = useState(location.state?.selectedContactId || '');
   const [searchContactTerm, setSearchContactTerm] = useState('');
   const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
@@ -241,7 +246,13 @@ const MeetingLog = () => {
   };
 
   const handleBatchSave = async () => {
-    if (!user) return toast.error('사용자를 먼저 선택해 주세요.');
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      if (!user) {
+        toast.error('사용자를 먼저 선택해 주세요.');
+        return;
+      }
     
     const finalLogs = [...multiLogs];
     finalLogs[currentQueueIndex] = {
@@ -335,6 +346,9 @@ const MeetingLog = () => {
     setAchievements([]);
     setActiveTab('list');
     fetchInteractions();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleQuickClientSubmit = async (e) => {
@@ -422,7 +436,10 @@ const MeetingLog = () => {
 
 
   const handleSave = async () => {
-    if (!user) {
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      if (!user) {
       toast.error('사용자를 먼저 선택해 주세요.');
       return;
     }
@@ -579,6 +596,8 @@ const MeetingLog = () => {
           localStorage.setItem('sheet_v3_interactions', JSON.stringify(errCache.filter(i => i.id !== tempId)));
         }
       }
+    } finally {
+      setIsSaving(false);
     }
   };
 

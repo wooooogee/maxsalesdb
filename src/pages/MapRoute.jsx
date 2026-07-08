@@ -7,8 +7,10 @@ import './MapRoute.css';
 import './MeetingLog.css'; // For shared .type-tabs styling
 
 const MapRoute = () => {
-  const [interactions, setInteractions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [interactions, setInteractions] = useState(() => {
+    try { const cached = localStorage.getItem('sheet_v3_interactions'); return cached ? JSON.parse(cached) : []; } catch(e){ return []; }
+  });
+  const [loading, setLoading] = useState(() => !localStorage.getItem('sheet_v3_interactions'));
   const [expandedId, setExpandedId] = useState(null);
   const location = useLocation();
   const [searchTerm, setSearchTerm] = useState(location.state?.searchTerm || '');

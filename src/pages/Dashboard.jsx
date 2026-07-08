@@ -35,12 +35,20 @@ import { useNavigate } from 'react-router-dom';
 const Dashboard = () => {
   const { user, changeUser } = useUser();
   const navigate = useNavigate();
-  const [clients, setClients] = useState([]);
-  const [meetings, setMeetings] = useState([]);
-  const [interactions, setInteractions] = useState([]);
+  const [clients, setClients] = useState(() => {
+    try { const cached = localStorage.getItem('sheet_v3_clients'); return cached ? JSON.parse(cached) : []; } catch(e){ return []; }
+  });
+  const [meetings, setMeetings] = useState(() => {
+    try { const cached = localStorage.getItem('sheet_v3_meetings'); return cached ? JSON.parse(cached) : []; } catch(e){ return []; }
+  });
+  const [interactions, setInteractions] = useState(() => {
+    try { const cached = localStorage.getItem('sheet_v3_interactions'); return cached ? JSON.parse(cached) : []; } catch(e){ return []; }
+  });
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => {
+    return !(localStorage.getItem('sheet_v3_clients') && localStorage.getItem('sheet_v3_meetings'));
+  });
 
   // Meeting Result Form
   const [editingMeetingId, setEditingMeetingId] = useState(null);
