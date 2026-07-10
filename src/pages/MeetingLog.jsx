@@ -158,6 +158,7 @@ const MeetingLog = () => {
       sessionStorage.removeItem('meetingLogDraft');
       setSelectedContactId(location.state.selectedContactId);
       setContactQueue([]);
+      setActiveTab(location.state.activeTab || 'write');
     } else {
       const draftStr = sessionStorage.getItem('meetingLogDraft');
       if (draftStr) {
@@ -343,8 +344,7 @@ const MeetingLog = () => {
     setContent('');
     setNeedsRecheck(false);
     setAchievements([]);
-    setActiveTab('list');
-    fetchInteractions();
+    navigate('/');
     } finally {
       setIsSaving(false);
     }
@@ -511,7 +511,8 @@ const MeetingLog = () => {
         attachments: (window.meetingAttachments || []).join(','),
         next_meeting_date: parsedMeetingDate,
         creator: user,
-        needs_recheck: needsRecheck
+        needs_recheck: needsRecheck,
+        linked_meeting_id: location.state?.linkedMeetingId || null
       };
     }
 
@@ -562,6 +563,7 @@ const MeetingLog = () => {
     setNextMeetingDate('');
     setSelectedContactId('');
     window.meetingAttachments = [];
+    navigate('/');
 
     // 3) Background Save
     try {
@@ -581,6 +583,19 @@ const MeetingLog = () => {
           const latestCache = JSON.parse(latestCacheStr);
           const fixedCache = latestCache.map(i => i.id === tempId ? savedInteraction : i);
           localStorage.setItem('sheet_v3_interactions', JSON.stringify(fixedCache));
+        }
+      }
+
+      // 연결된 미팅이 있다면 상태를 '완료'로 자동 변경
+      const linkedMeetId = location.state?.linkedMeetingId;
+      if (linkedMeetId) {
+        const cachedMeetings = JSON.parse(localStorage.getItem('sheet_v3_meetings') || '[]');
+        const meetToUpdate = cachedMeetings.find(m => m.id === linkedMeetId);
+        if (meetToUpdate) {
+          meetToUpdate.result = '완료';
+          await sheetsClient.update('meetings', meetToUpdate);
+          const nextMeetings = cachedMeetings.map(m => m.id === linkedMeetId ? meetToUpdate : m);
+          localStorage.setItem('sheet_v3_meetings', JSON.stringify(nextMeetings));
         }
       }
     } catch (err) {
@@ -607,13 +622,83 @@ const MeetingLog = () => {
         <button type="button" onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', color: 'var(--text-primary)' }}>
           <ChevronLeft size={24} />
         </button>
-        <h2 style={{ fontSize: '1.3rem', fontWeight: 700, margin: 0 }}>상담 기록 작성</h2>
+        <h2 style={{ fontSize: '1.3rem', fontWeight: 700, margin: 0 }}>상담 기록</h2>
       </div>
+
+      {selectedContactId && (
+        <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--border-color)', marginBottom: '1.25rem', paddingBottom: '0.5rem' }}>
+          <button 
+            type="button"
+            onClick={() => setActiveTab('write')}
+            style={{
+              background: 'none', border: 'none', padding: '0.25rem 0.5rem', cursor: 'pointer',
+              fontWeight: activeTab === 'write' ? 700 : 400,
+              color: activeTab === 'write' ? 'var(--accent-color)' : 'var(--text-secondary)',
+              borderBottom: activeTab === 'write' ? '2px solid var(--accent-color)' : 'none'
+            }}
+          >
+            기록 작성
+          </button>
+          <button 
+            type="button"
+            onClick={() => setActiveTab('list')}
+            style={{
+              background: 'none', border: 'none', padding: '0.25rem 0.5rem', cursor: 'pointer',
+              fontWeight: activeTab === 'list' ? 700 : 400,
+              color: activeTab === 'list' ? 'var(--accent-color)' : 'var(--text-secondary)',
+              borderBottom: activeTab === 'list' ? '2px solid var(--accent-color)' : 'none'
+            }}
+          >
+            내역 확인 ({interactions.filter(i => i.client_id === selectedContactId).length})
+          </button>
+        </div>
+      )}
+
       {contactQueue.length > 1 && (
         <div style={{ backgroundColor: 'var(--bg-secondary)', padding: '0.8rem 1rem', borderRadius: 'var(--radius-md)', marginBottom: '1rem', borderLeft: '4px solid var(--accent-color)', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span>다중 기록 작성 중 ({currentQueueIndex + 1} / {contactQueue.length})</span>
         </div>
       )}
+      
+      {activeTab === 'list' ? (
+        <div className="interactions-list">
+          {loadingInteractions ? (
+            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>조회 중...</div>
+          ) : (
+            (() => {
+              const clientInteractions = interactions.filter(i => i.client_id === selectedContactId);
+              if (clientInteractions.length === 0) {
+                return (
+                  <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)', backgroundColor: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
+                    기록된 내역이 없습니다.
+                  </div>
+                );
+              }
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {clientInteractions.sort((a, b) => new Date(b.date) - new Date(a.date)).map((interaction, idx) => (
+                    <div key={idx} style={{ padding: '1rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--bg-primary)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                        <span style={{ fontWeight: 600, color: 'var(--accent-color)' }}>{interaction.type || '미팅'}</span>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{interaction.date}</span>
+                      </div>
+                      <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5, fontSize: '0.95rem' }}>
+                        {interaction.content || interaction.summary || '내용 없음'}
+                      </div>
+                      {interaction.attachments && (
+                        <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                          첨부파일 있음
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()
+          )}
+        </div>
+      ) : (
+        <>
       
       {/* 1. Target Selection */}
       <div className="form-group" style={{ marginBottom: '1.25rem', position: 'relative' }}>
@@ -1100,6 +1185,8 @@ const MeetingLog = () => {
           </button>
         )}
       </div>
+      </>
+      )}
 
       {/* Quick New Client Modal (상담기록 탭 전용 신규등록 모달) */}
       {isNewClientModalOpen && (

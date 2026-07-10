@@ -956,7 +956,7 @@ const Dashboard = () => {
                     ) : (
                       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                         {(() => {
-                          const hasInteraction = interactions.some(i => i.client_id === meet.client_id && i.date && i.date.startsWith(meet.date.split(' ')[0]));
+                          const hasInteraction = meet.result === '완료' || interactions.some(i => i.client_id === meet.client_id && (i.linked_meeting_id === meet.id || (i.date && i.date.startsWith(meet.date.split(' ')[0]))));
                           if (hasInteraction) {
                             return (
                               <button 
@@ -975,7 +975,7 @@ const Dashboard = () => {
                                 className="btn-primary" 
                                 style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}
                                 onClick={() => {
-                                  navigate('/meetings', { state: { selectedContactId: meet.client_id, defaultContactType: '방문' } });
+                                  navigate('/meetings', { state: { selectedContactId: meet.client_id, defaultContactType: '방문', linkedMeetingId: meet.id } });
                                 }}
                               >
                                 미팅 내용 입력
