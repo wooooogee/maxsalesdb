@@ -320,7 +320,7 @@ const Dashboard = () => {
 
     // 2) Background network request
     try {
-      await sheetsClient.delete('meetings', { id: deleteTargetId, sheet: 'meetings' });
+      await sheetsClient.delete('meetings', deleteTargetId);
     } catch (err) {
       toast.error('일정 삭제 실패: ' + err.message);
       // Note: Ideally we would rollback the state here, but for simplicity we'll just show the error
