@@ -955,15 +955,34 @@ const Dashboard = () => {
                       </div>
                     ) : (
                       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                        <button 
-                          className="btn-primary" 
-                          style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}
-                          onClick={() => {
-                            navigate('/meetings', { state: { selectedContactId: meet.client_id, defaultContactType: '방문' } });
-                          }}
-                        >
-                          미팅 내용 입력
-                        </button>
+                        {(() => {
+                          const hasInteraction = interactions.some(i => i.client_id === meet.client_id && i.date && i.date.startsWith(meet.date.split(' ')[0]));
+                          if (hasInteraction) {
+                            return (
+                              <button 
+                                className="btn-primary" 
+                                style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', backgroundColor: '#a3e635', color: '#1a1a1a', border: 'none' }}
+                                onClick={() => {
+                                  navigate('/meetings', { state: { selectedContactId: meet.client_id, activeTab: 'list' } });
+                                }}
+                              >
+                                미팅 내용 확인
+                              </button>
+                            );
+                          } else {
+                            return (
+                              <button 
+                                className="btn-primary" 
+                                style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}
+                                onClick={() => {
+                                  navigate('/meetings', { state: { selectedContactId: meet.client_id, defaultContactType: '방문' } });
+                                }}
+                              >
+                                미팅 내용 입력
+                              </button>
+                            );
+                          }
+                        })()}
                         <button 
                           className="btn-secondary" 
                           style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', color: 'var(--text-primary)' }}

@@ -2,6 +2,20 @@
 // 예: "2026-06-29 오후 3시", "6/25 오후 3시" 등의 자연어 입력을
 // DB에 저장하기 위한 표준 포맷 "YYYY-MM-DD HH:mm"으로 변환합니다.
 
+export const getKSTDateTimeString = () => {
+  const now = new Date();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60 * 1000);
+  const kstTime = new Date(utc + (9 * 60 * 60 * 1000));
+  
+  const y = kstTime.getFullYear();
+  const m = String(kstTime.getMonth() + 1).padStart(2, '0');
+  const d = String(kstTime.getDate()).padStart(2, '0');
+  const h = String(kstTime.getHours()).padStart(2, '0');
+  const min = String(kstTime.getMinutes()).padStart(2, '0');
+  
+  return `${y}-${m}-${d} ${h}:${min}`;
+};
+
 export const parseKoreanDateTime = (inputStr) => {
   if (!inputStr) return '';
   const cleanStr = inputStr.trim();

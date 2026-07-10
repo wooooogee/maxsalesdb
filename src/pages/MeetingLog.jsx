@@ -19,8 +19,7 @@ import {
 import toast from 'react-hot-toast';
 import { useUser } from '../UserContext';
 import './MeetingLog.css';
-import { parseKoreanDateTime } from '../dateUtils';
-
+import { parseKoreanDateTime, getKSTDateTimeString } from '../dateUtils';
 // Helper: Convert File/Blob to Base64 string (without the mime header)
 const fileToBase64 = (fileOrBlob) => {
   return new Promise((resolve, reject) => {
@@ -311,7 +310,7 @@ const MeetingLog = () => {
         if (hasInteractionContent) {
           const tempId = 'temp_' + Date.now() + '_' + i;
           const interactionData = {
-            id: tempId, client_id: log.contactId, client_name: clientName, date: new Date().toISOString().substring(0, 16).replace('T', ' '),
+            id: tempId, client_id: log.contactId, client_name: clientName, date: getKSTDateTimeString(),
             type: log.contactType, summary: finalContent, content: finalContent, attachments: '', next_meeting_date: parsedMeetingDate, creator: user,
             needs_recheck: log.needsRecheck
           };
@@ -505,7 +504,7 @@ const MeetingLog = () => {
         id: tempId,
         client_id: selectedContactId,
         client_name: clientName,
-        date: new Date().toISOString().substring(0, 16).replace('T', ' '),
+        date: getKSTDateTimeString(),
         type: contactType,
         summary: finalContent,
         content: finalContent,
