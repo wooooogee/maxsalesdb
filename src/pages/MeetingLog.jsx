@@ -595,7 +595,8 @@ const MeetingLog = () => {
           localStorage.setItem('sheet_v3_interactions', JSON.stringify(errCache.filter(i => i.id !== tempId)));
         }
       }
-    } finally {
+    } // End of inner catch
+    } finally { // End of outer try
       setIsSaving(false);
     }
   };
