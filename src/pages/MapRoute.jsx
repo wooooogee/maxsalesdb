@@ -125,19 +125,21 @@ const MapRoute = () => {
     setDeleteTargetId(null);
     setDeletePassword('');
 
+    // Optimistic UI Update
+    const updatedList = interactions.filter(item => item.id !== id);
+    setInteractions(updatedList);
+    localStorage.setItem('sheet_v3_interactions', JSON.stringify(updatedList));
+    toast.success('기록이 삭제되었습니다.');
+
+    setExpandedId(null);
+
     try {
-      const toastId = toast.loading('기록을 삭제하는 중...');
       await sheetsClient.delete('interactions', id);
-      
-      const updatedList = interactions.filter(item => item.id !== id);
-      setInteractions(updatedList);
-      localStorage.setItem('sheet_v3_interactions', JSON.stringify(updatedList));
-      
-      toast.success('기록이 삭제되었습니다.', { id: toastId });
-      setExpandedId(null);
     } catch (err) {
-      console.error(err);
       toast.error('삭제 실패: ' + err.message);
+      // Revert optimistic update
+      setInteractions(interactions);
+      localStorage.setItem('sheet_v3_interactions', JSON.stringify(interactions));
     }
   };
 

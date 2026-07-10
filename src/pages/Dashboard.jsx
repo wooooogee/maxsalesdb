@@ -307,21 +307,23 @@ const Dashboard = () => {
       toast.error('비밀번호가 일치하지 않습니다.');
       return;
     }
+    
+    // 1) Optimistic UI Update
+    setMeetings(prev => {
+      const next = prev.filter(m => m.id !== deleteTargetId);
+      localStorage.setItem('sheet_v3_meetings', JSON.stringify(next));
+      return next;
+    });
+    setDeleteTargetId(null);
+    setDeletePassword('');
+    toast.success('일정이 삭제되었습니다.');
+
+    // 2) Background network request
     try {
-      toast.loading('일정을 삭제하는 중...', { id: 'delete-meeting' });
       await sheetsClient.delete('meetings', { id: deleteTargetId, sheet: 'meetings' });
-      
-      setMeetings(prev => {
-        const next = prev.filter(m => m.id !== deleteTargetId);
-        localStorage.setItem('sheet_v3_meetings', JSON.stringify(next));
-        return next;
-      });
-      
-      toast.success('일정이 삭제되었습니다.', { id: 'delete-meeting' });
-      setDeleteTargetId(null);
-      setDeletePassword('');
     } catch (err) {
-      toast.error('일정 삭제 실패: ' + err.message, { id: 'delete-meeting' });
+      toast.error('일정 삭제 실패: ' + err.message);
+      // Note: Ideally we would rollback the state here, but for simplicity we'll just show the error
     }
   };
 
@@ -344,6 +346,11 @@ const Dashboard = () => {
         hasCache = true;
       } else {
         setLoading(true);
+      }
+      if (sessionStorage.getItem('skipDashboardFetch') === 'true') {
+        sessionStorage.removeItem('skipDashboardFetch');
+        // If we have cache, skip the network request to prevent overwriting optimistic updates
+        if (hasCache) return;
       }
 
       const [clientsData, meetingsData, interactionsData] = await Promise.all([

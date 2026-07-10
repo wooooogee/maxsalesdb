@@ -344,6 +344,7 @@ const MeetingLog = () => {
     setContent('');
     setNeedsRecheck(false);
     setAchievements([]);
+    sessionStorage.setItem('skipDashboardFetch', 'true');
     navigate('/');
     } finally {
       setIsSaving(false);
@@ -563,6 +564,7 @@ const MeetingLog = () => {
     setNextMeetingDate('');
     setSelectedContactId('');
     window.meetingAttachments = [];
+    sessionStorage.setItem('skipDashboardFetch', 'true');
     navigate('/');
 
     // 3) Background Save
