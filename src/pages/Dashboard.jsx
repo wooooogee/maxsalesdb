@@ -646,6 +646,7 @@ const Dashboard = () => {
                   const current = Array.isArray(newMeetType) ? newMeetType : [];
                   if (current.includes(opt)) {
                     setNewMeetType(current.filter(t => t !== opt));
+                    if (opt === '직접입력') setNewMeetCustomType('');
                   } else {
                     setNewMeetType([...current, opt]);
                   }
@@ -690,7 +691,7 @@ const Dashboard = () => {
               setShowAddForm(false);
               setNewMeetClient('');
               setNewMeetTime('10:00');
-              setNewMeetType('브리핑');
+              setNewMeetType(['브리핑']);
               setNewMeetCustomType('');
             }}
           >

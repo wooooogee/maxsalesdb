@@ -939,6 +939,7 @@ const MeetingLog = () => {
                         const current = Array.isArray(nextMeetingType) ? nextMeetingType : [];
                         if (current.includes(opt)) {
                           setNextMeetingType(current.filter(t => t !== opt));
+                          if (opt === '직접입력') setCustomMeetingType('');
                         } else {
                           setNextMeetingType([...current, opt]);
                         }
