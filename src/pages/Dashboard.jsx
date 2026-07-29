@@ -624,6 +624,22 @@ const Dashboard = () => {
 
       <div style={{ display: 'flex', gap: '0.5rem' }}>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+          <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>일자 *</label>
+          <input 
+            type="date" 
+            value={format(selectedDate, 'yyyy-MM-dd')}
+            onChange={(e) => {
+              if (e.target.value) {
+                const [y, m, d] = e.target.value.split('-').map(Number);
+                setSelectedDate(new Date(y, m - 1, d));
+              }
+            }}
+            style={{ width: '100%', padding: '0.35rem', fontSize: '0.85rem' }}
+            required
+          />
+        </div>
+
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
           <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>시간 (직접입력) *</label>
           <input 
             type="text" 
