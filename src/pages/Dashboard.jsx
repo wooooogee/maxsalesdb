@@ -650,29 +650,38 @@ const Dashboard = () => {
             required
           />
         </div>
+      </div>
 
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-          <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>미팅 구분</label>
-          <div style={{ display: 'flex', gap: '0.2rem', flexWrap: 'wrap' }}>
-            {['브리핑', '인사', '소개', '유투브 촬영', '직접입력'].map(opt => (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => {
-                  const current = Array.isArray(newMeetType) ? newMeetType : [];
-                  if (current.includes(opt)) {
-                    setNewMeetType(current.filter(t => t !== opt));
-                    if (opt === '직접입력') setNewMeetCustomType('');
-                  } else {
-                    setNewMeetType([...current, opt]);
-                  }
-                }}
-                style={{ fontSize: '0.7rem', padding: '0.25rem 0.4rem', border: '1px solid var(--border-color)', borderRadius: '4px', background: (Array.isArray(newMeetType) ? newMeetType : []).includes(opt) ? 'var(--primary-color)' : 'white', color: (Array.isArray(newMeetType) ? newMeetType : []).includes(opt) ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}
-              >
-                {opt}
-              </button>
-            ))}
-          </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.1rem' }}>
+        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>미팅 구분</label>
+        <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+          {['브리핑', '인사', '소개', '유투브 촬영', '직접입력'].map(opt => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => {
+                const current = Array.isArray(newMeetType) ? newMeetType : [];
+                if (current.includes(opt)) {
+                  setNewMeetType(current.filter(t => t !== opt));
+                  if (opt === '직접입력') setNewMeetCustomType('');
+                } else {
+                  setNewMeetType([...current, opt]);
+                }
+              }}
+              style={{
+                fontSize: '0.75rem',
+                padding: '0.3rem 0.6rem',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                background: (Array.isArray(newMeetType) ? newMeetType : []).includes(opt) ? 'var(--primary-color)' : 'white',
+                color: (Array.isArray(newMeetType) ? newMeetType : []).includes(opt) ? 'white' : 'var(--text-primary)',
+                cursor: 'pointer',
+                fontWeight: 500
+              }}
+            >
+              {opt}
+            </button>
+          ))}
         </div>
       </div>
 
