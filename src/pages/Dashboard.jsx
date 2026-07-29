@@ -57,13 +57,11 @@ const Dashboard = () => {
   // 새 일정 직접 추가 Form 상태
   const [showAddForm, setShowAddForm] = useState(false);
   const [newMeetClient, setNewMeetClient] = useState('');
+  const [newMeetDate, setNewMeetDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [newMeetTime, setNewMeetTime] = useState('10:00');
   const [newMeetType, setNewMeetType] = useState(['브리핑']);
   const [newMeetCustomType, setNewMeetCustomType] = useState('');
   const [isAddingMeeting, setIsAddingMeeting] = useState(false);
-  const [routeSelectedIds, setRouteSelectedIds] = useState([]);
-  const [optimizedOrder, setOptimizedOrder] = useState([]);
-  const [draggedRouteId, setDraggedRouteId] = useState(null);
   const [cancelUnavailConfirm, setCancelUnavailConfirm] = useState(null);
   
   const [editMeetingId, setEditMeetingId] = useState(null);
@@ -132,7 +130,8 @@ const Dashboard = () => {
     }
 
     // YYYY-MM-DD + 입력된 시간 포맷 결합
-    const rawDateStr = `${format(selectedDate, 'yyyy-MM-dd')} ${newMeetTime}`;
+    const targetDate = newMeetDate || format(selectedDate, 'yyyy-MM-dd');
+    const rawDateStr = `${targetDate} ${newMeetTime}`;
     // 자연어 한글 날짜 시간 파싱 적용
     const parsedDateStr = parseKoreanDateTime(rawDateStr);
 
@@ -215,11 +214,18 @@ const Dashboard = () => {
       
       // Reset form
       setNewMeetClient('');
+      setNewMeetDate(format(selectedDate, 'yyyy-MM-dd'));
       setNewMeetTime('10:00');
       setNewMeetType(['브리핑']);
       setNewMeetCustomType('');
       setEditMeetingId(null);
       setShowAddForm(false);
+
+      // Navigate calendar view to target date so user sees the added/updated meeting
+      const [y, m, d] = targetDate.split('-').map(Number);
+      if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+        setSelectedDate(new Date(y, m - 1, d));
+      }
     } catch (err) {
       toast.error('일정 처리 실패: ' + err.message, { id: 'direct-add' });
     } finally {
@@ -245,7 +251,7 @@ const Dashboard = () => {
       
       setNewMeetClient(displayStr);
       const dateObj = parseISO(meet.date);
-      setSelectedDate(dateObj);
+      setNewMeetDate(format(dateObj, 'yyyy-MM-dd'));
       setNewMeetTime(format(dateObj, 'HH:mm'));
       
       const standardTypes = ['브리핑', '인사', '소개', '유투브 촬영'];
@@ -469,135 +475,7 @@ const Dashboard = () => {
     return clients.find(c => c.id === clientId);
   };
 
-  const visitMeetings = selectedDateMeetings.filter(meet => {
-    const client = getClientContact(meet.client_id);
-    return client && client.address;
-  });
 
-  useEffect(() => {
-    setRouteSelectedIds(visitMeetings.map(m => m.id));
-    setOptimizedOrder([]);
-  }, [selectedDate, meetings, clients]);
-
-  const handleRouteCheckboxChange = (meetId) => {
-    setRouteSelectedIds(prev => 
-      prev.includes(meetId) 
-        ? prev.filter(id => id !== meetId) 
-        : [...prev, meetId]
-    );
-  };
-
-  const optimizeRoute = () => {
-    const selectedItems = visitMeetings.filter(m => routeSelectedIds.includes(m.id));
-    if (selectedItems.length <= 1) {
-      toast.error('동선 최적화를 위해 최소 2개 이상의 장소를 체크해 주세요.');
-      return;
-    }
-    
-    const itemsWithCoords = selectedItems.map(m => {
-      const client = getClientContact(m.client_id);
-      return {
-        meeting: m,
-        client: client,
-        lat: parseFloat(client.latitude || 36.8),
-        lng: parseFloat(client.longitude || 127.1)
-      };
-    });
-
-    const optimized = [];
-    const unvisited = [...itemsWithCoords];
-    
-    let current = unvisited.shift();
-    optimized.push(current);
-
-    while (unvisited.length > 0) {
-      let nearestIdx = 0;
-      let minDistance = Infinity;
-
-      for (let i = 0; i < unvisited.length; i++) {
-        const target = unvisited[i];
-        const d = Math.sqrt(
-          Math.pow(current.lat - target.lat, 2) + 
-          Math.pow(current.lng - target.lng, 2)
-        );
-        if (d < minDistance) {
-          minDistance = d;
-          nearestIdx = i;
-        }
-      }
-
-      current = unvisited.splice(nearestIdx, 1)[0];
-      optimized.push(current);
-    }
-
-    const optimizedIds = optimized.map(item => item.meeting.id);
-    setRouteSelectedIds(optimizedIds);
-    setOptimizedOrder(optimizedIds);
-    toast.success('AI가 가장 효율적인 방문 동선을 계산했습니다!');
-  };
-
-  const handleDragStart = (e, id) => {
-    if (!routeSelectedIds.includes(id)) {
-      e.preventDefault();
-      return;
-    }
-    setDraggedRouteId(id);
-    e.dataTransfer.setData('text/plain', id);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDragOver = (e, targetId) => {
-    e.preventDefault(); // necessary to allow dropping
-    if (!draggedRouteId || draggedRouteId === targetId) return;
-    if (!routeSelectedIds.includes(targetId)) return;
-    
-    const draggedIdx = routeSelectedIds.indexOf(draggedRouteId);
-    const targetIdx = routeSelectedIds.indexOf(targetId);
-    
-    const newRoute = [...routeSelectedIds];
-    newRoute.splice(draggedIdx, 1);
-    newRoute.splice(targetIdx, 0, draggedRouteId);
-    
-    setRouteSelectedIds(newRoute);
-  };
-
-  const handleDragEnd = () => {
-    setDraggedRouteId(null);
-  };
-
-  const handleOpenNaverDirections = () => {
-    const orderedMeetings = routeSelectedIds
-      .map(id => visitMeetings.find(m => m.id === id))
-      .filter(Boolean);
-
-    if (orderedMeetings.length === 0) {
-      toast.error('길찾기를 실행할 장소를 체크해 주세요.');
-      return;
-    }
-
-    if (orderedMeetings.length === 1) {
-      const client = getClientContact(orderedMeetings[0].client_id);
-      const url = `https://map.naver.com/p/search/${encodeURIComponent(client.address || client.company)}`;
-      window.open(url, '_blank');
-    } else {
-      const path = orderedMeetings.map(m => {
-        const client = getClientContact(m.client_id);
-        const name = encodeURIComponent(client.company || client.name || '경유지');
-        const lat = client.latitude;
-        const lng = client.longitude;
-        
-        if (lat && lng) {
-          return `${lng},${lat},${name}`;
-        } else {
-          // 좌표가 없는 경우 대체 텍스트 (완벽히 동작하지 않을 수 있음)
-          return name;
-        }
-      }).join('/');
-      
-      const url = `https://map.naver.com/p/directions/${path}/-/car`;
-      window.open(url, '_blank');
-    }
-  };
 
   const renderMeetingForm = () => (
     <form onSubmit={handleDirectAddMeeting} style={{ padding: '0.75rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', backgroundColor: 'var(--bg-primary)' }}>
@@ -627,13 +505,8 @@ const Dashboard = () => {
           <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>일자 *</label>
           <input 
             type="date" 
-            value={format(selectedDate, 'yyyy-MM-dd')}
-            onChange={(e) => {
-              if (e.target.value) {
-                const [y, m, d] = e.target.value.split('-').map(Number);
-                setSelectedDate(new Date(y, m - 1, d));
-              }
-            }}
+            value={newMeetDate || format(selectedDate, 'yyyy-MM-dd')}
+            onChange={(e) => setNewMeetDate(e.target.value)}
             style={{ width: '100%', padding: '0.35rem', fontSize: '0.85rem' }}
             required
           />
@@ -885,7 +758,12 @@ const Dashboard = () => {
             type="button" 
             className="btn-secondary" 
             style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
-            onClick={() => setShowAddForm(!showAddForm)}
+            onClick={() => {
+              if (!showAddForm) {
+                setNewMeetDate(format(selectedDate, 'yyyy-MM-dd'));
+              }
+              setShowAddForm(!showAddForm);
+            }}
             disabled={isSelectedDateUnavailable}
           >
             {showAddForm ? '닫기' : '일정 직접 추가'}
@@ -1057,116 +935,7 @@ const Dashboard = () => {
 
 
 
-      {/* AI 동선 최적화 및 길찾기 섹션 */}
-      {visitMeetings.length > 0 && (
-        <div className="schedule-section" style={{ border: '1px solid var(--border-color)', padding: '1.25rem', borderRadius: 'var(--radius-lg)', backgroundColor: 'var(--bg-secondary)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-              🚗 AI 동선 최적화
-            </h3>
-            {visitMeetings.length > 1 && (
-              <button 
-                type="button" 
-                className="btn-secondary" 
-                onClick={optimizeRoute}
-                style={{ fontSize: '0.75rem', padding: '0.35rem 0.7rem', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--accent-color)', color: 'var(--accent-color)', borderRadius: 'var(--radius-md)', fontWeight: 600 }}
-              >
-                🤖 AI 추천 동선
-              </button>
-            )}
-          </div>
 
-          <div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
-              {(() => {
-                // 선택된 항목들이 위로, 순서대로 오도록 정렬
-                const sortedMeetings = [...visitMeetings].sort((a, b) => {
-                  const idxA = routeSelectedIds.indexOf(a.id);
-                  const idxB = routeSelectedIds.indexOf(b.id);
-                  if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-                  if (idxA !== -1) return -1;
-                  if (idxB !== -1) return 1;
-                  return 0;
-                });
-                return sortedMeetings.map((meet, idx) => {
-                  const client = getClientContact(meet.client_id);
-                  const isChecked = routeSelectedIds.includes(meet.id);
-                  const orderIndex = routeSelectedIds.indexOf(meet.id);
-
-                return (
-                  <div 
-                    key={meet.id} 
-                    draggable={isChecked}
-                    onDragStart={(e) => handleDragStart(e, meet.id)}
-                    onDragOver={(e) => handleDragOver(e, meet.id)}
-                    onDragEnd={handleDragEnd}
-                    onClick={() => handleRouteCheckboxChange(meet.id)}
-                    style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '0.75rem', 
-                      padding: '0.6rem 0.85rem', 
-                      backgroundColor: isChecked ? 'var(--bg-primary)' : 'var(--bg-secondary)', 
-                      border: `1px solid ${isChecked ? 'var(--accent-color)' : 'var(--border-color)'}`, 
-                      borderRadius: 'var(--radius-md)',
-                      cursor: isChecked ? 'grab' : 'pointer',
-                      opacity: draggedRouteId === meet.id ? 0.5 : 1,
-                      transition: 'background-color 0.2s, border-color 0.2s'
-                    }}
-                  >
-                    <input 
-                      type="checkbox" 
-                      checked={isChecked}
-                      onChange={() => {}} // Controlled via parent div click
-                      style={{ cursor: 'pointer', pointerEvents: 'none' }}
-                    />
-                    
-                    <div style={{ flex: 1, textAlign: 'left' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{meet.client_name}</span>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
-                          ({format(parseISO(meet.date), 'HH:mm')})
-                        </span>
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
-                        📍 {client?.address}
-                      </div>
-                    </div>
-
-                    {isChecked && (
-                      <span style={{ 
-                        display: 'inline-flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'center', 
-                        width: '20px', 
-                        height: '20px', 
-                        borderRadius: '50%', 
-                        backgroundColor: 'var(--success-color)', 
-                        color: 'white', 
-                        fontSize: '0.75rem', 
-                        fontWeight: 700 
-                      }}>
-                        {orderIndex + 1}
-                      </span>
-                    )}
-                  </div>
-                );
-                });
-              })()}
-            </div>
-
-            <button 
-              type="button" 
-              className="btn-primary" 
-              onClick={handleOpenNaverDirections}
-              disabled={routeSelectedIds.length === 0}
-              style={{ width: '100%', padding: '0.7rem', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
-            >
-              🚗 네이버 길찾기 시작
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Monthly Stats Modal */}
       {showStatsModal && (
