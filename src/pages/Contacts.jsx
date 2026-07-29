@@ -77,6 +77,7 @@ const Contacts = () => {
   const [deletePassword, setDeletePassword] = useState('');
 
   // Filters State
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedCity, setSelectedCity] = useState('');
   const [selectedDistrict, setSelectedDistrict] = useState('');
   const [selectedInterest, setSelectedInterest] = useState('');
@@ -236,11 +237,13 @@ const Contacts = () => {
 
   // Filter & Search Logic
   const filteredContacts = React.useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
     return contacts.filter(contact => {
       const matchesSearch = 
-        contact.name?.includes(searchQuery) || 
-        contact.company?.includes(searchQuery) || 
-        contact.address?.includes(searchQuery);
+        !query ||
+        contact.name?.toLowerCase().includes(query) || 
+        contact.company?.toLowerCase().includes(query) || 
+        contact.address?.toLowerCase().includes(query);
       
       const matchesCity = selectedCity ? contact.city === selectedCity : true;
       const matchesDistrict = selectedDistrict ? contact.district === selectedDistrict : true;
@@ -527,10 +530,11 @@ const Contacts = () => {
           <option value="none">선택안함</option>
         </select>
         
-        {(selectedCity || selectedDistrict || selectedInterest) && (
+        {(searchQuery || selectedCity || selectedDistrict || selectedInterest) && (
           <button 
             className="btn-secondary btn-sm"
             onClick={() => {
+              setSearchQuery('');
               setSelectedCity('');
               setSelectedDistrict('');
               setSelectedInterest('');
