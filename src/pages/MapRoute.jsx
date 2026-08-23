@@ -1,86 +1,178 @@
 import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { sheetsClient } from '../sheetsClient';
-import { ChevronRight, Phone, MapPin, Mail, FileText, Save, Trash2, X, Star } from 'lucide-react';
+import { 
+  ChevronRight, 
+  Phone, 
+  MapPin, 
+  Mail, 
+  FileText, 
+  Save, 
+  Trash2, 
+  X, 
+  Star,
+  Search,
+  Calendar,
+  User,
+  RefreshCw,
+  PlusCircle,
+  CheckCircle2,
+  Clock,
+  Users,
+  FileCheck
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import './MapRoute.css';
-import './MeetingLog.css'; // For shared .type-tabs styling
+import './MeetingLog.css';
 
 const MapRoute = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [interactions, setInteractions] = useState(() => {
     try { const cached = localStorage.getItem('sheet_v3_interactions'); return cached ? JSON.parse(cached) : []; } catch(e){ return []; }
   });
+  const [meetings, setMeetings] = useState(() => {
+    try { const cached = localStorage.getItem('sheet_v3_meetings'); return cached ? JSON.parse(cached) : []; } catch(e){ return []; }
+  });
+  const [contacts, setContacts] = useState(() => {
+    try { const cached = localStorage.getItem('sheet_v3_clients'); return cached ? JSON.parse(cached) : []; } catch(e){ return []; }
+  });
+
   const [loading, setLoading] = useState(() => !localStorage.getItem('sheet_v3_interactions'));
   const [expandedId, setExpandedId] = useState(null);
-  const location = useLocation();
   const [searchTerm, setSearchTerm] = useState(location.state?.searchTerm || '');
+  const [selectedContact, setSelectedContact] = useState(null);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [filterRecheck, setFilterRecheck] = useState(false);
-  
+
   // Edit states
   const [editData, setEditData] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
 
-  const formatLocalDate = (dateStr) => {
-    if (!dateStr) return '';
-    try {
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return dateStr;
-      return d.toLocaleString('ko-KR', {
-        year: 'numeric', month: '2-digit', day: '2-digit',
-        hour: '2-digit', minute: '2-digit'
-      });
-    } catch (e) {
-      return dateStr;
+  // Modal states
+  const [deleteTargetId, setDeleteTargetId] = useState(null);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [recheckTargetItem, setRecheckTargetItem] = useState(null);
+
+  const parseDateToLocal = (dateStr) => {
+    if (!dateStr) return null;
+    const match = String(dateStr).trim().match(/^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})(?:\s+(\d{1,2}):(\d{1,2}))?/);
+    if (match) {
+      const year = parseInt(match[1], 10);
+      const month = parseInt(match[2], 10) - 1;
+      const day = parseInt(match[3], 10);
+      const hour = match[4] ? parseInt(match[4], 10) : 0;
+      const minute = match[5] ? parseInt(match[5], 10) : 0;
+      return new Date(year, month, day, hour, minute);
     }
+    const fallback = new Date(dateStr);
+    return isNaN(fallback.getTime()) ? null : fallback;
   };
 
-  const fetchInteractions = async () => {
+  const formatLocalDate = (dateStr) => {
+    if (!dateStr) return '';
+    const d = parseDateToLocal(dateStr);
+    if (!d) return dateStr;
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const h = d.getHours();
+    const min = d.getMinutes();
+    
+    // 00:00 미드나잇 시간은 생략하여 2026.08.20 형태로만 표시
+    if (h === 0 && min === 0) {
+      return `${y}.${m}.${day}`;
+    }
+    
+    const hStr = String(h).padStart(2, '0');
+    const minStr = String(min).padStart(2, '0');
+    return `${y}.${m}.${day} ${hStr}:${minStr}`;
+  };
+
+  const extractDateOnly = (dateStr) => {
+    if (!dateStr) return '날짜 없음';
+    const d = parseDateToLocal(dateStr);
+    if (!d) return dateStr;
+    const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
+    const y = d.getFullYear();
+    const m = d.getMonth() + 1;
+    const day = d.getDate();
+    const weekday = weekdays[d.getDay()];
+    return `${y}년 ${m}월 ${day}일 (${weekday})`;
+  };
+
+  const extractShortDate = (dateStr) => {
+    if (!dateStr) return '';
+    const d = parseDateToLocal(dateStr);
+    if (!d) return dateStr;
+    const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const weekday = weekdays[d.getDay()];
+    return `${y}.${m}.${day} (${weekday})`;
+  };
+
+  const fetchData = async () => {
     try {
-      const cached = localStorage.getItem('sheet_v3_interactions');
-      if (cached) {
-        setInteractions(JSON.parse(cached));
-        setLoading(false);
-      } else {
-        setLoading(true);
-      }
-      
-      const data = await sheetsClient.read('interactions');
-      if (data && data.length > 0) {
-        const sorted = data.sort((a, b) => {
-          const timeA = a.date ? new Date(a.date.replace(' ', 'T')).getTime() : 0;
-          const timeB = b.date ? new Date(b.date.replace(' ', 'T')).getTime() : 0;
-          const validA = isNaN(timeA) ? 0 : timeA;
-          const validB = isNaN(timeB) ? 0 : timeB;
-          return validB - validA;
+      setLoading(true);
+      const [interactionsData, meetingsData, clientsData] = await Promise.all([
+        sheetsClient.read('interactions'),
+        sheetsClient.read('meetings'),
+        sheetsClient.read('clients')
+      ]);
+
+      if (interactionsData) {
+        const sorted = [...interactionsData].sort((a, b) => {
+          const timeA = parseDateToLocal(a.date)?.getTime() || 0;
+          const timeB = parseDateToLocal(b.date)?.getTime() || 0;
+          return timeB - timeA;
         });
         setInteractions(sorted);
         localStorage.setItem('sheet_v3_interactions', JSON.stringify(sorted));
       }
+      if (meetingsData) {
+        setMeetings(meetingsData);
+        localStorage.setItem('sheet_v3_meetings', JSON.stringify(meetingsData));
+      }
+      if (clientsData) {
+        setContacts(clientsData);
+        localStorage.setItem('sheet_v3_clients', JSON.stringify(clientsData));
+      }
     } catch (error) {
-      console.error('Failed to fetch interactions:', error);
+      console.error('Failed to fetch data:', error);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchInteractions();
+    fetchData();
   }, []);
+
+  const handleResetData = () => {
+    if (window.confirm('샘플 데이터를 복원하시겠습니까? (로컬 환경 초기화)')) {
+      sheetsClient.resetToSampleData();
+      fetchData();
+      toast.success('샘플 데이터가 복원되었습니다.');
+    }
+  };
 
   const handleUpdateInteraction = async (e) => {
     e.stopPropagation();
     if (!editData) return;
-    
+
     try {
       setIsUpdating(true);
       const toastId = toast.loading('수정 사항 저장 중...');
-      
+
       await sheetsClient.update('interactions', editData);
-      
+
       const updatedList = interactions.map(item => item.id === editData.id ? editData : item);
       setInteractions(updatedList);
       localStorage.setItem('sheet_v3_interactions', JSON.stringify(updatedList));
-      
+
       toast.success('수정되었습니다.', { id: toastId });
       setExpandedId(null);
     } catch (err) {
@@ -90,12 +182,6 @@ const MapRoute = () => {
       setIsUpdating(false);
     }
   };
-
-  const [deleteTargetId, setDeleteTargetId] = useState(null);
-  const [deletePassword, setDeletePassword] = useState('');
-  
-  // Recheck modal states
-  const [recheckTargetItem, setRecheckTargetItem] = useState(null);
 
   const handleRecheckConfirm = (remove) => {
     let finalItem = { ...recheckTargetItem };
@@ -120,12 +206,11 @@ const MapRoute = () => {
       toast.error('비밀번호가 일치하지 않습니다.');
       return;
     }
-    
+
     const id = deleteTargetId;
     setDeleteTargetId(null);
     setDeletePassword('');
 
-    // Optimistic UI Update
     const updatedList = interactions.filter(item => item.id !== id);
     setInteractions(updatedList);
     localStorage.setItem('sheet_v3_interactions', JSON.stringify(updatedList));
@@ -137,43 +222,119 @@ const MapRoute = () => {
       await sheetsClient.delete('interactions', id);
     } catch (err) {
       toast.error('삭제 실패: ' + err.message);
-      // Revert optimistic update
       setInteractions(interactions);
       localStorage.setItem('sheet_v3_interactions', JSON.stringify(interactions));
     }
   };
 
-  const filteredInteractions = interactions.filter(item => {
+  // interactions와 meetings 데이터를 통합 관리
+  const allCombinedRecords = React.useMemo(() => {
+    const map = new Map();
+
+    interactions.forEach(item => {
+      if (!item) return;
+      const key = item.id || `int_${item.client_id}_${item.date}`;
+      map.set(key, {
+        ...item,
+        sheet_source: 'interactions',
+        meeting_type: item.meeting_type || item.type || '상담'
+      });
+    });
+
+    meetings.forEach(item => {
+      if (!item) return;
+      const key = item.id || `meet_${item.client_id}_${item.date}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          ...item,
+          sheet_source: 'meetings',
+          meeting_type: item.type || '미팅',
+          summary: item.summary || item.content || item.type || '',
+          content: item.content || item.summary || ''
+        });
+      }
+    });
+
+    return Array.from(map.values());
+  }, [interactions, meetings]);
+
+  const cleanType = (rawType) => {
+    if (!rawType) return '인사';
+    let str = String(rawType).trim();
+    str = str.replace(/\(진행\s*예정.*?\)/gi, '').trim();
+    str = str.replace(/\(완료\)/gi, '').trim();
+    
+    if (str.includes('브리핑')) return '브리핑';
+    if (str.includes('인사')) return '인사';
+    if (str.includes('계약')) return '계약';
+    if (str.includes('소개')) return '소개';
+    if (str.includes('자료') || str.includes('제안서')) return '자료송부';
+
+    if (str.includes(',')) {
+      str = str.split(',')[0].trim();
+    }
+    if (!str || str === '미팅') return '인사';
+    return str;
+  };
+
+  // 선택된 대상자 관련 통계 및 미팅 현황 분석 (과거 날짜는 모두 "미팅을 한 거"로 인식)
+  const getTargetStats = (contact) => {
+    if (!contact) return null;
+
+    const nowTime = new Date().getTime();
+
+    const targetRecords = allCombinedRecords.filter(r => 
+      r.client_id === contact.id || 
+      (r.client_name && r.client_name.includes(contact.company))
+    );
+
+    // 과거 미팅 (date <= now 또는 interactions 또는 완료)
+    const pastMeetings = targetRecords.filter(r => {
+      const dateTime = parseDateToLocal(r.date)?.getTime() || 0;
+      return r.sheet_source === 'interactions' || r.result === '완료' || dateTime <= nowTime;
+    }).sort((a, b) => (parseDateToLocal(b.date)?.getTime() || 0) - (parseDateToLocal(a.date)?.getTime() || 0));
+
+    // 미래 미팅 (date > now 이고 result !== 완료)
+    const futureMeetings = targetRecords.filter(r => {
+      const dateTime = parseDateToLocal(r.date)?.getTime() || 0;
+      return r.result !== '완료' && dateTime > nowTime;
+    }).sort((a, b) => (parseDateToLocal(a.date)?.getTime() || 0) - (parseDateToLocal(b.date)?.getTime() || 0));
+
+    const lastInteraction = pastMeetings[0] || null;
+    const nextMeeting = futureMeetings[0] || null;
+
+    return {
+      lastInteraction,
+      nextMeeting,
+      totalCount: pastMeetings.length
+    };
+  };
+
+  const activeTargetStats = selectedContact ? getTargetStats(selectedContact) : null;
+
+  // 필터링된 기록 리스트 (통합 데이터 사용)
+  const filteredInteractions = allCombinedRecords.filter(item => {
     if (filterRecheck && !item.needs_recheck) return false;
+
+    if (selectedContact) {
+      return item.client_id === selectedContact.id || (item.client_name && item.client_name.includes(selectedContact.company));
+    }
+
     const query = searchTerm.toLowerCase().trim();
     if (!query) return true;
+
     const clientNameMatch = item.client_name?.toLowerCase().includes(query);
     const summaryMatch = item.summary?.toLowerCase().includes(query);
     const contentMatch = item.content?.toLowerCase().includes(query);
-    const transcriptionMatch = item.transcription?.toLowerCase().includes(query);
-    
-    return clientNameMatch || summaryMatch || contentMatch || transcriptionMatch;
+    const typeMatch = item.type?.toLowerCase().includes(query) || item.meeting_type?.toLowerCase().includes(query);
+
+    return clientNameMatch || summaryMatch || contentMatch || typeMatch;
   });
 
-  const extractDateOnly = (dateStr) => {
-    if (!dateStr) return '날짜 없음';
-    try {
-      const d = new Date(dateStr.replace(' ', 'T'));
-      if (isNaN(d.getTime())) return '날짜 없음';
-      return d.toLocaleDateString('ko-KR', {
-        year: 'numeric', month: 'long', day: 'numeric', weekday: 'short'
-      });
-    } catch (e) {
-      return '날짜 없음';
-    }
-  };
-
   const sortedFilteredInteractions = [...filteredInteractions].sort((a, b) => {
-    const timeA = a.date ? new Date(a.date.replace(' ', 'T')).getTime() : 0;
-    const timeB = b.date ? new Date(b.date.replace(' ', 'T')).getTime() : 0;
-    const validA = isNaN(timeA) ? 0 : timeA;
-    const validB = isNaN(timeB) ? 0 : timeB;
-    return validB - validA;
+    const timeA = parseDateToLocal(a.date)?.getTime() || 0;
+    const timeB = parseDateToLocal(b.date)?.getTime() || 0;
+    return timeB - timeA;
   });
 
   const groupedInteractions = sortedFilteredInteractions.reduce((acc, item) => {
@@ -186,109 +347,423 @@ const MapRoute = () => {
     return acc;
   }, { map: {}, keys: [] });
 
+  const getDisplayMeetingType = (item) => {
+    if (!item) return '인사';
+    const typeCandidate = cleanType(item.meeting_type || item.type);
+    if (typeCandidate && !['전화', '방문', '팩스', '이메일'].includes(typeCandidate)) {
+      return typeCandidate;
+    }
+    const text = `${item.summary || ''} ${item.content || ''}`.toLowerCase();
+    if (text.includes('브리핑')) return '브리핑';
+    if (text.includes('인사')) return '인사';
+    if (text.includes('계약')) return '계약';
+    if (text.includes('소개')) return '소개';
+    if (text.includes('자료') || text.includes('제안서')) return '자료송부';
+
+    return cleanType(item.meeting_type || item.type || '인사');
+  };
+
+  const getBadgeStyle = (meetingType) => {
+    switch (meetingType) {
+      case '브리핑':
+        return { backgroundColor: '#1976d2', color: 'white' };
+      case '인사':
+        return { backgroundColor: '#2e7d32', color: 'white' };
+      case '계약':
+        return { backgroundColor: '#e65100', color: 'white' };
+      case '소개':
+        return { backgroundColor: '#7b1fa2', color: 'white' };
+      case '자료송부':
+        return { backgroundColor: '#00838f', color: 'white' };
+      default:
+        return { backgroundColor: '#1976d2', color: 'white' };
+    }
+  };
+
   return (
     <div className="card" style={{ paddingBottom: '3rem' }}>
+      {/* 헤더 바 */}
       <div style={{ marginBottom: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ fontSize: '1.4rem', fontWeight: 700, margin: 0 }}>기록 내용</h2>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <button 
-            onClick={() => setFilterRecheck(!filterRecheck)}
-            className={filterRecheck ? 'btn-primary' : 'btn-secondary'}
-            style={{ fontSize: '0.8rem', padding: '0.4rem 0.6rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}
-          >
-            <Star size={13} fill={filterRecheck ? '#ffb300' : 'none'} color={filterRecheck ? '#ffb300' : 'currentColor'} /> 
-            <span>별표시</span>
-          </button>
-          <button 
-            onClick={fetchInteractions} 
-            className="btn-secondary" 
-            style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}
-            disabled={loading}
-          >
-            새로고침
-          </button>
+        <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, whiteSpace: 'nowrap', wordBreak: 'keep-all' }}>
+          📋 기록 내용
+        </h2>
+        <button 
+          onClick={() => setFilterRecheck(!filterRecheck)}
+          className={filterRecheck ? 'btn-primary' : 'btn-secondary'}
+          style={{ fontSize: '0.78rem', padding: '0.4rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', whiteSpace: 'nowrap', borderRadius: '6px' }}
+        >
+          <Star size={13} fill={filterRecheck ? '#ffb300' : 'none'} color={filterRecheck ? '#ffb300' : 'currentColor'} /> 
+          <span>별표시</span>
+        </button>
+      </div>
+
+      {/* 대상자 검색 바 */}
+      <div style={{ marginBottom: '1.25rem', position: 'relative' }}>
+        <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.35rem' }}>
+          🔍 대상자 검색
+        </label>
+        
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <div style={{ flex: 1, position: 'relative' }}>
+            <input 
+              type="text" 
+              placeholder="" 
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setIsDropdownOpen(true);
+                if (!e.target.value.trim()) {
+                  setSelectedContact(null);
+                }
+              }}
+              onFocus={() => setIsDropdownOpen(true)}
+              onBlur={() => setTimeout(() => setIsDropdownOpen(false), 200)}
+              style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontSize: '0.85rem', boxSizing: 'border-box' }}
+            />
+
+            {/* 자동완성 드롭다운 */}
+            {isDropdownOpen && searchTerm.trim() && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                right: 0,
+                backgroundColor: 'var(--bg-primary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 'var(--radius-md)',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                maxHeight: '220px',
+                overflowY: 'auto',
+                zIndex: 200,
+                marginTop: '0.25rem'
+              }}>
+                {(() => {
+                  const filtered = contacts.filter(c => 
+                    c.company?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                    c.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                    c.address?.toLowerCase().includes(searchTerm.toLowerCase())
+                  );
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div style={{ padding: '0.75rem', fontSize: '0.8rem', color: 'var(--text-secondary)', textAlign: 'center' }}>
+                        검색된 대상자가 없습니다.
+                      </div>
+                    );
+                  }
+
+                  return filtered.map(c => (
+                    <div 
+                      key={c.id} 
+                      onClick={() => {
+                        setSelectedContact(c);
+                        setSearchTerm(c.name ? `${c.company} - ${c.name}` : c.company);
+                        setIsDropdownOpen(false);
+                      }}
+                      style={{
+                        padding: '0.65rem 0.85rem',
+                        borderBottom: '1px solid var(--border-color)',
+                        cursor: 'pointer',
+                        fontSize: '0.85rem',
+                        textAlign: 'left'
+                      }}
+                      className="search-item-hover"
+                    >
+                      <span style={{ fontWeight: 600, color: 'var(--accent-color)' }}>{c.company}</span>
+                      {c.name && <span style={{ color: 'var(--text-primary)', marginLeft: '0.4rem' }}>- {c.name}</span>}
+                    </div>
+                  ));
+                })()}
+              </div>
+            )}
+          </div>
+
+          {(selectedContact || searchTerm) && (
+            <button 
+              className="btn-secondary"
+              onClick={() => {
+                setSelectedContact(null);
+                setSearchTerm('');
+              }}
+              style={{ fontSize: '0.8rem', padding: '0 0.85rem', whiteSpace: 'nowrap' }}
+            >
+              전체 보기
+            </button>
+          )}
         </div>
       </div>
 
-      {/* 검색 바 */}
-      <div style={{ marginBottom: '1.25rem' }}>
-        <input 
-          type="text" 
-          placeholder="검색" 
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', fontSize: '0.85rem', boxSizing: 'border-box' }}
-        />
-      </div>
+      {/* 🎯 대상자 미팅 현황 퀵 카드 */}
+      {selectedContact && (
+        <div style={{
+          marginBottom: '1.5rem',
+          padding: '1.1rem',
+          borderRadius: 'var(--radius-lg)',
+          backgroundColor: 'var(--bg-secondary)',
+          border: '2px solid var(--accent-color)',
+          boxShadow: 'var(--shadow-md)',
+          boxSizing: 'border-box',
+          width: '100%'
+        }}>
+          {/* 상호명 및 담당자 성함 */}
+          <div style={{ marginBottom: '0.6rem', width: '100%' }}>
+            <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--accent-color)', wordBreak: 'keep-all', lineHeight: 1.3 }}>
+              🏢 {selectedContact.company} {selectedContact.name ? `- ${selectedContact.name}` : ''}
+            </div>
+          </div>
 
+          {/* 연락처 */}
+          {selectedContact.phone && (
+            <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              <Phone size={13} color="var(--accent-color)" />
+              <a href={`tel:${selectedContact.phone}`} style={{ color: 'var(--accent-color)', textDecoration: 'none', fontWeight: 600 }}>{selectedContact.phone}</a>
+            </div>
+          )}
+
+          {/* 다음 미팅 일정 잡기 버튼 (전체 너비 가로 버튼) */}
+          <button 
+            className="btn-primary"
+            onClick={() => navigate('/meetings', { state: { selectedContactId: selectedContact.id, activeTab: 'write' } })}
+            style={{
+              width: '100%',
+              fontSize: '0.88rem',
+              padding: '0.65rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.4rem',
+              whiteSpace: 'nowrap',
+              backgroundColor: 'var(--accent-color)',
+              borderRadius: 'var(--radius-md)',
+              marginBottom: '0.85rem'
+            }}
+          >
+            <PlusCircle size={16} />
+            <span>➕ 다음 미팅 일정 잡기</span>
+          </button>
+
+          {/* 최근 미팅 및 다음 미팅 상태 그리드 */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem', marginTop: '0.8rem' }}>
+            {/* 최근 미팅 카드 */}
+            <div style={{
+              padding: '0.8rem',
+              backgroundColor: 'var(--bg-primary)',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-color)'
+            }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.3rem' }}>
+                <CheckCircle2 size={14} color="var(--success-color)" /> 최근 미팅 (언제)
+              </div>
+              {activeTargetStats?.lastInteraction ? (
+                <div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    {formatLocalDate(activeTargetStats.lastInteraction.date)}
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.3rem', marginTop: '0.25rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{
+                      fontSize: '0.72rem',
+                      padding: '0.15rem 0.45rem',
+                      borderRadius: '4px',
+                      backgroundColor: '#e3f2fd',
+                      color: '#1976d2',
+                      fontWeight: 700
+                    }}>
+                      {getDisplayMeetingType(activeTargetStats.lastInteraction)}
+                    </span>
+                    {(activeTargetStats.lastInteraction.attendees_count > 0 || activeTargetStats.lastInteraction.contracts_count > 0) && (
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent-color)' }}>
+                        👥 진행 {activeTargetStats.lastInteraction.attendees_count || 0}명 | 📝 계약 {activeTargetStats.lastInteraction.contracts_count || 0}명
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: '0.85rem', color: '#e53935', fontWeight: 600 }}>
+                  ⚠️ 최근 미팅 이력 없음 (미진행)
+                </div>
+              )}
+            </div>
+
+            {/* 다음 미팅 예정 카드 */}
+            <div style={{
+              padding: '0.8rem',
+              backgroundColor: 'var(--bg-primary)',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-color)'
+            }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.3rem' }}>
+                <Clock size={14} color="var(--accent-color)" /> 다음 미팅 예정 (스케줄)
+              </div>
+              {activeTargetStats?.nextMeeting ? (
+                <div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--accent-color)' }}>
+                    {formatLocalDate(activeTargetStats.nextMeeting.date)}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', fontWeight: 600 }}>
+                    {cleanType(activeTargetStats.nextMeeting.type || activeTargetStats.nextMeeting.meeting_type)}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                  📅 다음 일정 미정 (스케줄 필요)
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 타임라인 히스토리 리스트 (검색 시에만 노출: 미리 보여주지 않음) */}
       <div className="interactions-list" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {loading && interactions.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>기록을 로딩하는 중...</div>
+        ) : (!selectedContact && !searchTerm.trim() && !filterRecheck) ? (
+          <div style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--text-secondary)', backgroundColor: 'var(--bg-primary)', borderRadius: 'var(--radius-lg)', border: '1px border var(--border-color)' }}>
+            <Search size={38} style={{ marginBottom: '0.8rem', opacity: 0.5, color: 'var(--accent-color)' }} />
+            <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.4rem' }}>
+              대상자를 검색해보세요
+            </div>
+            <div style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>
+              상단 검색창에 대상자를 입력하시면<br />방문 날짜와 상담 기록을 확인하실 수 있습니다.
+            </div>
+          </div>
         ) : sortedFilteredInteractions.length > 0 ? (
-          groupedInteractions.keys.map(dateGroup => (
-            <div key={dateGroup} style={{ marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-              <div style={{ display: 'inline-block', alignSelf: 'flex-start', padding: '0.3rem 0.8rem', backgroundColor: 'var(--bg-primary)', borderRadius: '20px', border: '1px solid var(--border-color)', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                {dateGroup}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {groupedInteractions.map[dateGroup].map(item => {
-                  const isExpanded = expandedId === item.id;
-                  return (
-                    <div 
-                      key={item.id} 
-                      className={`contact-card ${isExpanded ? 'expanded' : 'collapsed'}`}
-                      style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', backgroundColor: 'var(--bg-secondary)', overflow: 'hidden' }}
-                      onClick={() => {
-                        if (isExpanded) {
-                          setExpandedId(null);
-                          setEditData(null);
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+            {sortedFilteredInteractions.map(item => {
+              const isExpanded = expandedId === item.id;
+              const displayType = getDisplayMeetingType(item);
+              const badgeStyle = getBadgeStyle(displayType);
+              const hasStats = (item.attendees_count > 0 || item.contracts_count > 0);
+
+              const rawSummary = (item.summary || item.content || '').trim();
+              const isDuplicateSummary = !rawSummary || rawSummary === displayType || ['브리핑', '인사', '방문', '전화', '상담', '소개'].includes(rawSummary);
+
+              return (
+                <div 
+                  key={item.id} 
+                  className={`contact-card ${isExpanded ? 'expanded' : 'collapsed'}`}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    border: isExpanded ? '2px solid var(--accent-color)' : '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-md)',
+                    backgroundColor: 'var(--bg-secondary)',
+                    overflow: 'hidden',
+                    transition: 'border-color 0.2s, box-shadow 0.2s'
+                  }}
+                >
+                  {/* 두 줄 컴팩트 요약 행 (1행: 미팅일시 + 미팅내용 배지, 2행: 장소 및 대상자) */}
+                  <div 
+                    onClick={() => {
+                      if (isExpanded) {
+                        setExpandedId(null);
+                        setEditData(null);
+                      } else {
+                        if (item.needs_recheck) {
+                          setRecheckTargetItem(item);
                         } else {
-                          if (item.needs_recheck) {
-                            setRecheckTargetItem(item);
-                          } else {
-                            setExpandedId(item.id);
-                            setEditData({ ...item });
-                          }
+                          setExpandedId(item.id);
+                          setEditData({ ...item });
                         }
-                      }}
-                    >
-                      <div className="contact-card-header" style={{ padding: '0.85rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: isExpanded ? '1px solid var(--border-color)' : 'none', backgroundColor: 'var(--bg-primary)' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', textAlign: 'left' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>{item.client_name}</span>
-                            {item.needs_recheck && <Star size={16} fill="#ffb300" color="#ffb300" className="blink-star" />}
-                          </div>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                            {item.type === '전화' && <Phone size={11} />}
-                            {item.type === '방문' && <MapPin size={11} />}
-                            {item.type === '이메일' && <Mail size={11} />}
-                            {item.type === '팩스' && <FileText size={11} />}
-                            {formatLocalDate(item.date)} • {item.type}
+                      }
+                    }}
+                    style={{
+                      padding: '0.75rem 0.9rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.35rem',
+                      backgroundColor: 'var(--bg-primary)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {/* 1행: 미팅일시 + 미팅내용 배지 (절대 잘리지 않게 일시 바로 옆 배치) */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                          📅 {extractShortDate(item.date)}
+                        </span>
+
+                        {/* 미팅 내용 배지 (브리핑, 인사 등) */}
+                        <span style={{
+                          fontSize: '0.73rem',
+                          fontWeight: 700,
+                          padding: '0.15rem 0.55rem',
+                          borderRadius: '10px',
+                          whiteSpace: 'nowrap',
+                          ...badgeStyle
+                        }}>
+                          {displayType}
+                        </span>
+
+                        {hasStats && (
+                          <span style={{ fontSize: '0.73rem', fontWeight: 700, color: '#e65100', whiteSpace: 'nowrap' }}>
+                            👥{item.attendees_count || 0} 📝{item.contracts_count || 0}
                           </span>
-                        </div>
-                        <ChevronRight 
-                          size={16} 
-                          style={{ 
-                            transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', 
-                            transition: 'transform 0.2s',
-                            color: 'var(--text-secondary)'
-                          }} 
-                        />
+                        )}
+
+                        {item.needs_recheck && <Star size={15} fill="#ffb300" color="#ffb300" className="blink-star" />}
                       </div>
-                      
+
+                      <ChevronRight 
+                        size={16} 
+                        style={{ 
+                          transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', 
+                          transition: 'transform 0.2s',
+                          color: 'var(--text-secondary)',
+                          flexShrink: 0
+                        }} 
+                      />
+                    </div>
+
+                    {/* 2행: 장소 및 대상자 (상호명 - 성함) + 메모 내용 */}
+                    <div style={{ fontSize: '0.83rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 700, color: 'var(--accent-color)' }}>
+                        🏢 {item.client_name}
+                      </span>
+                      {!isDuplicateSummary && (
+                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '300px' }}>
+                          - {rawSummary}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                      {/* 펼쳐진 상세 내용 및 편집 영역 */}
                       {isExpanded && editData && (
-                        <div className="contact-body" onClick={(e) => e.stopPropagation()} style={{ padding: '1rem', backgroundColor: 'var(--bg-secondary)', textAlign: 'left' }}>
+                        <div className="contact-body" onClick={(e) => e.stopPropagation()} style={{ padding: '1.1rem', backgroundColor: 'var(--bg-secondary)', textAlign: 'left', borderTop: '1px solid var(--border-color)' }}>
                           
+                          {/* 상세 브리핑 성과 수량 수정 */}
+                          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', backgroundColor: 'var(--bg-primary)', padding: '0.6rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                            <div style={{ flex: 1 }}>
+                              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.2rem' }}>👥 진행 인원 (명)</label>
+                              <input 
+                                type="number" 
+                                value={editData.attendees_count || 0}
+                                onChange={(e) => setEditData({ ...editData, attendees_count: parseInt(e.target.value, 10) || 0 })}
+                                style={{ width: '100%', padding: '0.35rem', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                              />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.2rem' }}>📝 계약 인원 (명)</label>
+                              <input 
+                                type="number" 
+                                value={editData.contracts_count || 0}
+                                onChange={(e) => setEditData({ ...editData, contracts_count: parseInt(e.target.value, 10) || 0 })}
+                                style={{ width: '100%', padding: '0.35rem', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                              />
+                            </div>
+                          </div>
+
                           <div className="form-group" style={{ marginBottom: '1rem' }}>
-                            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent-color)', display: 'block', marginBottom: '0.4rem' }}>미팅 내용</label>
+                            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent-color)', display: 'block', marginBottom: '0.4rem' }}>상세 메모 및 내용</label>
                             <textarea
-                              value={editData.content || editData.transcription || ''}
-                              onChange={(e) => setEditData({ ...editData, content: e.target.value })}
-                              style={{ width: '100%', minHeight: '180px', padding: '0.75rem', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.85rem', boxSizing: 'border-box', resize: 'vertical' }}
-                              placeholder="상담/미팅 내용을 입력하세요..."
+                              value={editData.content || editData.summary || ''}
+                              onChange={(e) => setEditData({ ...editData, content: e.target.value, summary: e.target.value })}
+                              style={{ width: '100%', minHeight: '160px', padding: '0.75rem', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.85rem', boxSizing: 'border-box', resize: 'vertical' }}
+                              placeholder="상담 및 방문 내용을 입력하세요..."
                             />
                           </div>
-                          
+
                           <div className="form-group" style={{ marginBottom: '1rem' }}>
                             <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, color: editData.needs_recheck ? '#d32f2f' : 'var(--text-secondary)' }}>
                               <input 
@@ -300,21 +775,22 @@ const MapRoute = () => {
                               <Star size={14} fill={editData.needs_recheck ? '#ffb300' : 'none'} color={editData.needs_recheck ? '#ffb300' : 'currentColor'} className={editData.needs_recheck ? 'blink-star' : ''} /> 다시확인 필요 (별표시)
                             </label>
                           </div>
-                          
+
                           {editData.next_meeting_date && (
-                            <div style={{ marginBottom: '1rem', padding: '0.5rem', backgroundColor: 'var(--bg-primary)', borderRadius: '4px', borderLeft: '3px solid var(--success-color)' }}>
-                              <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--success-color)', display: 'block' }}>📅 예정된 후속 미팅 일정</span>
-                              <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{editData.next_meeting_date}</span>
+                            <div style={{ marginBottom: '1rem', padding: '0.6rem', backgroundColor: 'var(--bg-primary)', borderRadius: '6px', borderLeft: '4px solid var(--success-color)' }}>
+                              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--success-color)', display: 'block' }}>📅 예정된 다음 미팅 일정</span>
+                              <span style={{ fontSize: '0.88rem', fontWeight: 700 }}>{editData.next_meeting_date}</span>
                             </div>
                           )}
 
+                          {/* 첨부파일 영역 */}
                           <div className="form-group" style={{ marginBottom: '1rem' }}>
-                            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent-color)', display: 'block', marginBottom: '0.4rem' }}>첨부파일</label>
+                            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent-color)', display: 'block', marginBottom: '0.4rem' }}>첨부파일 및 사진</label>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                               {editData.attachments && editData.attachments.split(',').filter(Boolean).length > 0 && (
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                                   {editData.attachments.split(',').filter(Boolean).map((url, idx) => (
-                                    <div key={idx} style={{ position: 'relative', display: 'inline-block', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '0.2rem', backgroundColor: 'var(--bg-primary)' }}>
+                                    <div key={idx} style={{ position: 'relative', display: 'inline-block', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '0.25rem 0.5rem', backgroundColor: 'var(--bg-primary)' }}>
                                       <a href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.75rem', color: 'var(--accent-color)', textDecoration: 'underline' }}>첨부파일 {idx + 1} 보기</a>
                                       <button 
                                         type="button" 
@@ -372,6 +848,7 @@ const MapRoute = () => {
                               </div>
                             </div>
                           </div>
+
                           <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
                             <button 
                               type="button" 
@@ -386,17 +863,15 @@ const MapRoute = () => {
                     </div>
                   );
                 })}
-              </div>
-            </div>
-          ))
+          </div>
         ) : (
-          <div style={{ textAlign: 'center', padding: '1rem 0', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-            {searchTerm.trim() ? '검색 결과와 일치하는 상담 기록이 없습니다.' : '저장된 상담 기록이 없습니다.'}
+          <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+            {searchTerm.trim() ? '검색 결과와 일치하는 미팅 기록이 없습니다.' : '저장된 미팅 기록이 없습니다.'}
           </div>
         )}
       </div>
-      
-      {/* 화면 하단 고정 저장 버튼 (글로벌) */}
+
+      {/* 화면 하단 고정 저장 버튼 (수정 모드) */}
       {editData && (
         <div style={{ position: 'fixed', bottom: 'calc(65px + env(safe-area-inset-bottom))', left: 0, right: 0, padding: '0.8rem 1rem', backgroundColor: 'var(--bg-secondary)', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', zIndex: 1000, boxShadow: '0 -4px 10px rgba(0,0,0,0.05)' }}>
           <button 

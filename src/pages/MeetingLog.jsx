@@ -39,6 +39,8 @@ const MeetingLog = () => {
   const { user } = useUser();
   const [content, setContent] = useState('');
   const [needsRecheck, setNeedsRecheck] = useState(false);
+  const [attendeesCount, setAttendeesCount] = useState('');
+  const [contractsCount, setContractsCount] = useState('');
   
   // 성과 관리
   const [achievements, setAchievements] = useState([]);
@@ -501,12 +503,16 @@ const MeetingLog = () => {
     let interactionData = null;
     
     if (hasInteractionContent) {
+      const typeArr = Array.isArray(nextMeetingType) ? nextMeetingType : [nextMeetingType];
       interactionData = {
         id: tempId,
         client_id: selectedContactId,
         client_name: clientName,
         date: getKSTDateTimeString(),
         type: contactType,
+        meeting_type: typeArr.join(', ') || '상담',
+        attendees_count: attendeesCount ? parseInt(attendeesCount, 10) : 0,
+        contracts_count: contractsCount ? parseInt(contractsCount, 10) : 0,
         summary: finalContent,
         content: finalContent,
         attachments: (window.meetingAttachments || []).join(','),
@@ -704,7 +710,7 @@ const MeetingLog = () => {
       
       {/* 1. Target Selection */}
       <div className="form-group" style={{ marginBottom: '1.25rem', position: 'relative' }}>
-        <label><UserCheck size={16} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: '0.25rem' }}/> 대상자 선택 (누구랑) *</label>
+        <label><UserCheck size={16} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: '0.25rem' }}/> 대상자 선택 *</label>
         
         {selectedContactId ? (
           <div style={{ 
@@ -719,7 +725,7 @@ const MeetingLog = () => {
             <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>
               {(() => {
                 const c = contacts.find(item => item.id === selectedContactId);
-                return c ? `${c.company} - ${c.name} (${c.title || '담당자'})` : '선택된 대상자';
+                return c ? (c.name ? `${c.company} - ${c.name}` : c.company) : '선택된 대상자';
               })()}
             </span>
             <button 
@@ -738,7 +744,7 @@ const MeetingLog = () => {
             <div style={{ flex: 1, position: 'relative' }}>
               <input 
                 type="text" 
-                placeholder="상호명, 성함, 또는 주소로 대상자 검색..." 
+                placeholder="대상자 검색" 
                 value={searchContactTerm}
                 onChange={(e) => {
                   setSearchContactTerm(e.target.value);
@@ -796,7 +802,7 @@ const MeetingLog = () => {
                         }}
                         className="search-item-hover"
                       >
-                        <span style={{ fontWeight: 600 }}>{c.company}</span> - {c.name} ({c.title || '담당자'}, {c.city})
+                        <span style={{ fontWeight: 600, color: 'var(--accent-color)' }}>{c.company}</span>{c.name ? ` - ${c.name}` : ''}
                       </div>
                     ));
                   })()}
@@ -959,6 +965,32 @@ const MeetingLog = () => {
                     style={{ marginTop: '0.4rem', fontSize: '0.85rem' }}
                   />
                 )}
+
+                {/* 진행 인원 / 계약 인원 실적 입력 */}
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', backgroundColor: 'var(--bg-primary)', padding: '0.6rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.2rem' }}>👥 진행 인원 (명)</label>
+                    <input 
+                      type="number" 
+                      min="0"
+                      placeholder="예: 8"
+                      value={attendeesCount}
+                      onChange={(e) => setAttendeesCount(e.target.value)}
+                      style={{ width: '100%', padding: '0.35rem 0.5rem', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.2rem' }}>📝 계약 인원 (명)</label>
+                    <input 
+                      type="number" 
+                      min="0"
+                      placeholder="예: 3"
+                      value={contractsCount}
+                      onChange={(e) => setContractsCount(e.target.value)}
+                      style={{ width: '100%', padding: '0.35rem 0.5rem', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           )}

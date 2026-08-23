@@ -752,12 +752,12 @@ const Dashboard = () => {
       <div className="schedule-section">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
           <h3 style={{ fontSize: '1.05rem', fontWeight: 600, margin: 0 }}>
-            {format(selectedDate, 'MM월 dd일')} 미팅 일정 ({isSelectedDateUnavailable ? '불가' : selectedDateMeetings.length + '건'})
+            {format(selectedDate, 'MM월 dd일')} ({isSelectedDateUnavailable ? '불가' : selectedDateMeetings.length + '건'})
           </h3>
           <button 
             type="button" 
             className="btn-secondary" 
-            style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+            style={{ fontSize: '0.75rem', padding: '0.35rem 0.75rem', whiteSpace: 'nowrap' }}
             onClick={() => {
               if (!showAddForm) {
                 setNewMeetDate(format(selectedDate, 'yyyy-MM-dd'));
@@ -766,7 +766,7 @@ const Dashboard = () => {
             }}
             disabled={isSelectedDateUnavailable}
           >
-            {showAddForm ? '닫기' : '일정 직접 추가'}
+            {showAddForm ? '닫기' : '일정추가'}
           </button>
         </div>
 

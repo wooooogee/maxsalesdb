@@ -142,3 +142,17 @@
   padding: 0.2rem 0.4rem;
   border-radius: 3px;
 }
+
+.search-item-hover:hover {
+  background-color: var(--bg-secondary) !important;
+}
+
+@keyframes spinAnim {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  animation: spinAnim 1s linear infinite;
+}
+

@@ -1,14 +1,10 @@
-// Google Sheets API Web App Client
-// VITE_GOOGLE_SHEETS_API_URL이 설정되어 있으면 구글 시트와 통신하고,
-// 없으면 로컬 스토리지(localStorage)를 DB처럼 사용하여 즉시 작동하도록 구현합니다.
-
-const GAS_URL = import.meta.env.VITE_GOOGLE_SHEETS_API_URL || '';
+const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwoNgmg0Ef1lnDU-6DZAc264qRdYt3eksjr_YYv7prjHDrU_1w6hpqLq1xcos_YGrGh/exec';
+const GAS_URL = import.meta.env.VITE_GOOGLE_SHEETS_API_URL || DEFAULT_GAS_URL;
 
 const isGasConfigured = () => {
   return GAS_URL && GAS_URL !== 'YOUR_GOOGLE_SHEETS_API_URL' && GAS_URL.startsWith('http');
 };
 
-// 천안 요양원 실제 데이터 데이터베이스 탑재
 const INITIAL_MOCKS = {
   clients: [
     {
@@ -771,14 +767,38 @@ const INITIAL_MOCKS = {
   chat_messages: []
 };
 
-// 로컬스토리지 헬퍼 (v3로 키를 갱신하여 기존 캐시 자동 삭제)
+// 로컬스토리지 헬퍼 (v3 및 하위 키 마이그레이션 + MOCK 자동복원)
 const getLocalStorageData = (sheet) => {
-  const data = localStorage.getItem(`sheet_v3_${sheet}`);
-  if (!data) {
-    localStorage.setItem(`sheet_v3_${sheet}`, JSON.stringify(INITIAL_MOCKS[sheet] || []));
-    return INITIAL_MOCKS[sheet] || [];
+  try {
+    const raw = localStorage.getItem(`sheet_v3_${sheet}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+    // 구형 키 마이그레이션 (v2, v1 등)
+    const legacyKeys = [`sheet_v2_${sheet}`, `sheet_${sheet}`, sheet];
+    for (const key of legacyKeys) {
+      const legacyRaw = localStorage.getItem(key);
+      if (legacyRaw) {
+        const legacyParsed = JSON.parse(legacyRaw);
+        if (Array.isArray(legacyParsed) && legacyParsed.length > 0) {
+          localStorage.setItem(`sheet_v3_${sheet}`, JSON.stringify(legacyParsed));
+          return legacyParsed;
+        }
+      }
+    }
+  } catch (e) {
+    console.error('LocalStorage read error:', e);
   }
-  return JSON.parse(data);
+  
+  // 기본 초기 MOCK 데이터로 복구 및 저장
+  const defaults = INITIAL_MOCKS[sheet] || [];
+  if (defaults.length > 0) {
+    localStorage.setItem(`sheet_v3_${sheet}`, JSON.stringify(defaults));
+  }
+  return defaults;
 };
 
 const setLocalStorageData = (sheet, data) => {
@@ -786,6 +806,14 @@ const setLocalStorageData = (sheet, data) => {
 };
 
 export const sheetsClient = {
+  // 샘플 데이터 강제 복원 헬퍼
+  resetToSampleData: () => {
+    localStorage.setItem('sheet_v3_clients', JSON.stringify(INITIAL_MOCKS.clients));
+    localStorage.setItem('sheet_v3_interactions', JSON.stringify(INITIAL_MOCKS.interactions));
+    localStorage.setItem('sheet_v3_meetings', JSON.stringify(INITIAL_MOCKS.meetings));
+    return true;
+  },
+
   // 데이터 조회
   read: async (sheetName) => {
     if (isGasConfigured()) {
@@ -795,7 +823,12 @@ export const sheetsClient = {
           mode: 'cors',
         });
         if (!response.ok) throw new Error('Network response was not ok');
-        return await response.json();
+        const remoteData = await response.json();
+        if (Array.isArray(remoteData) && remoteData.length > 0) {
+          localStorage.setItem(`sheet_v3_${sheetName}`, JSON.stringify(remoteData));
+          return remoteData;
+        }
+        return getLocalStorageData(sheetName);
       } catch (err) {
         console.warn(`구글 시트(${sheetName}) 데이터 조회 실패, 로컬 저장소 전환:`, err);
         return getLocalStorageData(sheetName);
